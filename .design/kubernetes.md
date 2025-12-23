@@ -8,8 +8,7 @@ This document outlines the design for adding a Kubernetes (K8s) runtime to the `
 - Maintain a developer experience (DX) as close as possible to the local `docker` runtime.
 - Support "Agent Sandbox" technologies for secure execution.
 - Solve the challenges of remote file system access and user identity.
-- Support a single 'grove' as being a mixture of local and remote agents
-
+- Support a single 'grove' (project) utilizing a mix of local and remote agents.
 
 ## Architecture
 
@@ -27,54 +26,86 @@ graph TD
 ## Key Challenges & Solutions
 
 ### 1. The Context Problem (Source Code & Workspace)
-In the local `docker` runtime, we simply bind-mount the project directory. In K8s, the Pod is remote and cannot access the user's local disk directly.
+In the local `docker` runtime, we bind-mount the project directory. In K8s, the Pod is remote.
 
-#### Alternatives:
-*   **A. Git Clone (The CI Approach):** The agent starts empty and clones the repository.
-    *   *Pros:* Clean, standard, low bandwidth.
-    *   *Cons:* **Cannot see uncommitted local changes.** Requires SSH keys/tokens to be provisioned.
-*   **B. Copy-on-Start (The Snapshot Approach):** The CLI tars the current directory (respecting `.gitignore`) and streams it to the Pod upon startup.
-    *   *Pros:* Captures uncommitted changes (WIP). No extra auth needed for repo access.
-    *   *Cons:* Slower for huge repos. One-way (changes in agent don't sync back automatically).
-*   **C. Bi-directional Sync (The Dev Env Approach):** Use a sidecar or tool (like Mutagen or Skaffold) to continuously sync files.
-    *   *Pros:* True "remote development" experience.
-    *   *Cons:* High complexity to implement and debug.
+#### Solution: Snapshot & Sync (Copy-on-Start)
+We will use a "Snapshot" approach for the MVP to align with the "run this task" mental model.
+*   **Startup:**
+    1.  Create Pod with an `EmptyDir` volume for `/workspace`.
+    2.  Wait for Pod to be `Running`.
+    3.  `tar` the local directory (respecting `.gitignore`) and stream it to the Pod:
+        `tar -cz . | kubectl exec -i <pod> -- tar -xz -C /workspace`
+    4.  Start the agent process.
 
-#### Recommendation:
-**Start with Approach B (Copy-on-Start).**
-This aligns best with the "run this task" mental model of `scion-agent`.
-*   **Mechanism:**
-    1.  Create Pod.
-    2.  Wait for Pod `Running`.
-    3.  `tar -cz . | kubectl exec -i <pod> -- tar -xz -C /workspace`
-    4.  Execute the agent command.
-
-*Future Enhancement:* Support Approach A (Git Clone) via a specific flag (e.g., `--clean-source`) for reproducible runs.
+#### Data Synchronization (Sync-Back)
+Since the workspace is ephemeral, changes made by the agent must be explicitly retrieved.
+*   **Manual Sync:** A new command `scion sync <agent-name>` will stream files from the Pod's `/workspace` back to the local directory.
+*   **On Stop:** When `scion stop <agent-name>` is called, the CLI will prompt (or accept a flag `--sync`) to pull changes before destroying the Pod.
+    *   *Mechanism:* `kubectl exec -i <pod> -- tar -cz -C /workspace . | tar -xz -C ./local/path`
 
 ### 2. The Identity Problem (Home Directory)
-Local runtimes often mount `~/.ssh` or `~/.config` to give agents access to user credentials. Copying the entire home directory to K8s is impractical and insecure.
-
-#### Alternatives:
-*   **A. PVC Persistence:** Mount a PersistentVolumeClaim to `/home/scion`.
-    *   *Pros:* State persists between runs.
-    *   *Cons:* Doesn't solve the *initial* population of credentials.
-*   **B. Secret/ConfigMap Projection:** Selectively project specific files.
-    *   *Pros:* Secure, granular.
-    *   *Cons:* Users must explicitly configure which secrets to map.
-
-#### Recommendation:
-**Hybrid Approach.**
-*   **Auth:** The CLI should auto-detect critical credentials (like `~/.ssh/id_rsa`, `~/.config/gcloud`) and offer to create K8s Secrets to mount them, or use existing generic secrets.
-*   **Config:** Do not attempt to sync the full home dir. Agents should be configured via environment variables or explicit config files.
+#### Solution: Hybrid Secret Projection
+*   **Auth:** The CLI will auto-detect critical credentials (e.g., `~/.ssh/id_rsa`, `~/.config/gcloud`) and offer to create ephemeral K8s Secrets to mount them.
+*   **Config:** Agents should be configured via environment variables or explicit config files rather than syncing a full home directory.
 
 ### 3. Security & Isolation (Agent Sandbox)
-Standard Pods share the host kernel. For running potentially untrusted generated code, this is a risk.
+#### Solution: Runtime Classes
+The `KubernetesRuntime` will support a `runtimeClassName` configuration. If configured (e.g., to `gvisor` or `kata`), the Pod spec will include this, enabling strong kernel-level isolation for untrusted code.
 
-#### Kubernetes Agent Sandbox (gVisor/Kata)
-The [Kubernetes Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) (and related projects like gVisor/Kata Containers) provides strong isolation.
+## Local Representation & State
 
-*   **Design:** The `KubernetesRuntime` should support a `runtimeClassName` configuration.
-*   **Usage:** If configured, the Pod spec will include `runtimeClassName: gvisor` (or `kata`), ensuring the agent runs in a distinct kernel context.
+Even though agents run remotely, their "handle" must remain local to maintain a consistent CLI experience.
+
+### Directory Structure
+We will retain the `.scion/agents/<agent-name>/` directory for every agent, regardless of runtime.
+<!-- TODO this should be part of the agent structure in the json, which is read only -->
+*   **`.scion/agents/<agent-name>/scion.json`**:
+    *   **`runtime`**: `"kubernetes"`
+    *   **`kubernetes`**:
+        *   `cluster`: "my-cluster-context" (Snapshot of the context used to create it)
+        *   `namespace`: "scion-agents"
+        *   `podName`: "scion-agent-xyz-123"
+        *   `syncedAt`: Timestamp of last sync.
+
+### State Management
+*   **Listing:** `scion list` will iterate through `.scion/agents/`. For K8s agents, it will perform a lightweight API check (e.g., `GetPod`) to update the status (Running/Completed/Error).
+*   **Orphaned Pods:** If a local agent directory is deleted, the CLI should eventually allow "garbage collection" of managed Pods in the cluster via labels (`managed-by=scion`).
+
+## Grove Configuration
+
+<!-- TODO there is not a grove or project level scion.json
+instead there should be an optional kubernetes-config.json
+ -->
+A "Grove" (the current project context) needs to define where its remote agents should live. This configuration belongs in the project's `scion.json`.
+
+### Configuration Schema (`scion.json`)
+<!-- TODO only keep the kuberentes specific fields in the kubernetes-config.json 
+ -->
+We will rely on the user's standard `~/.kube/config` for authentication and endpoint details, avoiding the need to manage sensitive credentials within Scion itself.
+
+```json
+{
+  "template": "default",
+  "image": "gemini-cli-sandbox",
+  "runtime": "kubernetes", // Default runtime for this grove
+  "kubernetes": {
+    "context": "minikube",        // Optional: specific kubeconfig context to use
+    "namespace": "scion-dev",     // Optional: target namespace (default: default)
+    "runtimeClassName": "gvisor", // Optional: for sandboxing
+    "resources": {                // Optional: default resource requests/limits
+      "requests": { "cpu": "500m", "memory": "512Mi" },
+      "limits": { "cpu": "2", "memory": "2Gi" }
+    }
+  }
+}
+```
+
+### Hierarchy
+1.  **Agent Config** (Runtime args): Overrides specific settings per agent.
+2.  **Grove Config** (`scion.json`): Sets project-wide defaults (Cluster, Namespace).
+<<!-- TODO  keep the kuberentes specific fields in the global ~/.scion/kubernetes-config.json  -->
+3.  **Global Config** (`~/.config/scion/settings.json`): Sets user defaults (e.g., preferred default runtime).
+
 
 ## Implementation Plan
 
@@ -85,61 +116,28 @@ Implement the `Runtime` interface in `pkg/runtime/kubernetes.go`.
 type KubernetesRuntime struct {
     Client      *kubernetes.Clientset
     Namespace   string
-    KubeConfig  string
-}
-```
-
-### Configuration
-Update `scion.json` / `settings.json` to include K8s-specific settings:
-```json
-{
-  "runtime": "kubernetes",
-  "kubernetes": {
-    "namespace": "scion-agents",
-    "context": "my-cluster",
-    "runtimeClassName": "gvisor", // Optional, for sandboxing
-    "storageClass": "standard"    // For scratch space
-  }
+    Context     string // The kubeconfig context name
 }
 ```
 
 ### Lifecycle Implementation
 *   **Run:**
-    1.  Parse `RunConfig`.
-    2.  Generate Pod Spec (Name: `scion-<id>`).
-    3.  Mount EmptyDir for workspace (or PVC if persistence requested).
-    4.  `client.CoreV1().Pods(ns).Create(...)`
-    5.  Wait for `Running`.
-    6.  **Upload Context:** Execute streaming tar copy of `RunConfig.Workspace`.
-    7.  **Exec Start:** Execute the actual agent command (e.g., `scion-agent start`).
-*   **Stop:** `client.CoreV1().Pods(ns).Delete(...)`
-*   **List:** `client.CoreV1().Pods(ns).List(ListOptions{LabelSelector: "managed-by=scion"})`
-*   **Attach:** Use `client-go/tools/remotecommand` to establish a SPDY stream for interactive TTY (simulating `kubectl exec -it`).
-
-### Sandbox Support
-If `settings.kubernetes.runtimeClassName` is set, inject it into the Pod Spec. This trivially enables high-security modes if the cluster supports them.
-
-## Tricky Details & Decision Matrix
-
-| Feature | Local Docker | Kubernetes (Proposed) |
-| :--- | :--- | :--- |
-| **Workspace** | Bind Mount (Live) | Tar Upload (Snapshot) |
-| **Home Dir** | Bind Mount | Secrets (Selective) |
-| **Network** | Host/Bridge | Cluster IP / Egress |
-| **Persistence**| Host FS | EmptyDir (Ephemeral) / PVC |
-| **Logs** | Docker Logs | Pod Logs |
-| **Interactive**| `docker attach` | `remotecommand` SPDY stream |
-
-## Open Questions
-
-* How is completed work copied back to the local machine (assuming a git pull request is not the means to close the loop)
-* How should the agent's existence be best represented locally? Consider still having an .scion/agents/agent-foo/ directory with the scion.json agent section having a local/remote field.
-* each grove can have a kubernetes configuration which includes cluster connection details and potential kuberentes namespace - how to best implement
-
+    1.  Load Grove config to determine Context/Namespace.
+    2.  Init K8s Client.
+    3.  Generate Pod Spec (Name: `scion-<agent-id>`, Label: `scion-agent=<agent-id>`).
+    4.  Create Pod (EmptyDir for workspace).
+    5.  Wait for `Running` state.
+    6.  **Upload Context:** `tar` stream local dir -> Pod.
+    7.  **Exec Start:** Run agent start command.
+    8.  Update `.scion/agents/<id>/scion.json` with Pod details.
+*   **Sync:** Implement `scion sync` using `tar` stream Pod -> local dir.
+*   **Stop:**
+    1.  (Optional) Prompt for Sync.
+    2.  Delete Pod.
+    3.  Clean up local `.scion/agents/<id>/` state.
+*   **Attach:** Use `client-go/tools/remotecommand` with SPDY to attach to the main container's TTY.
 
 ## Future Work
-*   **Sidecar Syncing:** Integrate with Mutagen for live bidirectional editing.
-*   **Web attach:** Use one of the existing projects or technologies for providing a web-based gateway to attach to agents
-*   **Cloud based grove:** Have a cloud based centralized control plane to be able to see and manage tasks
-*   **Job Mode:** Run agents as K8s Jobs for "fire and forget" tasks.
-
+*   **Sidecar Syncing:** Integrate with tools like Mutagen for real-time bidirectional syncing.
+*   **Web Attach:** Provide a web-based gateway/proxy to attach to agents via browser.
+*   **Job Mode:** Support running agents as K8s Jobs for finite, non-interactive tasks.
