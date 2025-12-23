@@ -51,5 +51,5 @@ func init() {
 	rootCmd.AddCommand(groveCmd)
 	groveCmd.AddCommand(groveInitCmd)
 
-	groveInitCmd.Flags().BoolVarP(&globalInit, "global", "g", false, "Initialize the global grove in the home directory")
+	groveInitCmd.Flags().BoolVar(&globalInit, "global", false, "Initialize the global grove in the home directory")
 }
