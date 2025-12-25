@@ -256,9 +256,7 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 
 	if finalScionCfg != nil {
 		detached = finalScionCfg.IsDetached()
-		if finalScionCfg.UseTmux {
-			useTmux = true
-		}
+		useTmux = finalScionCfg.IsUseTmux()
 		if finalScionCfg.Model != "" {
 			resolvedModel = finalScionCfg.Model
 		}

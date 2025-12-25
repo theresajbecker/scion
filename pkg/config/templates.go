@@ -23,7 +23,7 @@ type ScionConfig struct {
 	UnixUsername string       `json:"unix_username"`
 	Image        string       `json:"image"`
 	Detached     *bool        `json:"detached"`
-	UseTmux      bool         `json:"use_tmux"`
+	UseTmux      *bool        `json:"use_tmux"`
 	Model        string       `json:"model"`
 	Agent        *AgentConfig `json:"agent,omitempty"`
 }
@@ -33,6 +33,13 @@ func (c *ScionConfig) IsDetached() bool {
 		return true
 	}
 	return *c.Detached
+}
+
+func (c *ScionConfig) IsUseTmux() bool {
+	if c.UseTmux == nil {
+		return false
+	}
+	return *c.UseTmux
 }
 
 func (t *Template) LoadConfig() (*ScionConfig, error) {
@@ -224,8 +231,8 @@ func MergeScionConfig(base, override *ScionConfig) *ScionConfig {
 	if override.Detached != nil {
 		result.Detached = override.Detached
 	}
-	if override.UseTmux {
-		result.UseTmux = true
+	if override.UseTmux != nil {
+		result.UseTmux = override.UseTmux
 	}
 	if override.Model != "" {
 		result.Model = override.Model

@@ -193,3 +193,46 @@ func TestUpdateDefaultTemplate(t *testing.T) {
 		t.Error("expected scion.json to be overwritten, but it still contains corrupt content")
 	}
 }
+
+func TestMergeScionConfig(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	tests := []struct {
+		name     string
+		base     *ScionConfig
+		override *ScionConfig
+		wantTmux bool
+	}{
+		{
+			name:     "override false to true",
+			base:     &ScionConfig{UseTmux: &falseVal},
+			override: &ScionConfig{UseTmux: &trueVal},
+			wantTmux: true,
+		},
+		{
+			name:     "override true to false",
+			base:     &ScionConfig{UseTmux: &trueVal},
+			override: &ScionConfig{UseTmux: &falseVal},
+			wantTmux: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MergeScionConfig(tt.base, tt.override)
+			if got.UseTmux == nil || *got.UseTmux != tt.wantTmux {
+				t.Errorf("MergeScionConfig() UseTmux = %v, want %v", got.UseTmux, tt.wantTmux)
+			}
+		})
+	}
+
+	t.Run("detached merge", func(t *testing.T) {
+		base := &ScionConfig{Detached: &trueVal}
+		override := &ScionConfig{Detached: &falseVal}
+		got := MergeScionConfig(base, override)
+		if got.Detached == nil || *got.Detached != false {
+			t.Errorf("expected detached to be false, got %v", got.Detached)
+		}
+	})
+}
