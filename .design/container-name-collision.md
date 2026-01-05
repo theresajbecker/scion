@@ -51,14 +51,14 @@ When `scion start <agent_name>` is called in Grove `CurrentGrove`:
      - Repeat existence check for `<CurrentGrove>-<agent_name>`.
        - If found: Check grove ownership (should be ours). Proceed.
        - If not found: Start container with name `<CurrentGrove>-<agent_name>`.
+     - Be sure the new container name is formatted as a valid slug regardless of grove name
 
 ### UX Considerations
 - When a collision causes a rename, the CLI should output a notice:
   `"Notice: Container name 'dev' is in use by another grove. Using 'myproject-dev' instead."`
 - The `scion stop`, `scion logs`, and `scion attach` commands must be smart enough to resolve the name.
-  - If user runs `scion attach dev`, and only `myproject-dev` exists (for the current grove), it should resolve automatically?
-  - Or should `scion` always track the "actual" container name in its state/metadata? 
-  - *Recommendation:* `scion` commands usually operate by Agent Name. The Agent Manager should resolve the Agent Name to the running Container Name by querying the runtime with the Grove filter.
+  - If user runs `scion attach dev`, and only `myproject-dev` exists (for the current grove), it should resolve automatically.
+
 
 ### Resolution Logic (for Stop/Attach/etc)
 When performing an operation on agent `dev` in Grove `CurrentGrove`:
