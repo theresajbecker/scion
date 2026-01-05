@@ -108,6 +108,27 @@ func TestGitUtils(t *testing.T) {
 		if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
 			t.Errorf("worktree dir still exists after removal")
 		}
+
+		// Test PruneWorktrees
+		prunePath := filepath.Join(repoDir, "prune-test")
+		pruneBranch := "prune-branch"
+		if err := CreateWorktree(prunePath, pruneBranch); err != nil {
+			t.Fatalf("CreateWorktree for prune failed: %v", err)
+		}
+		// Manually remove directory to simulate stale worktree
+		if err := os.RemoveAll(prunePath); err != nil {
+			t.Fatalf("Failed to remove prune path: %v", err)
+		}
+		// Prune
+		if err := PruneWorktrees(); err != nil {
+			t.Fatalf("PruneWorktrees failed: %v", err)
+		}
+		// Verify we can create it again (if prune failed, this might fail with 'already exists')
+		if err := CreateWorktree(prunePath, pruneBranch); err != nil {
+			t.Errorf("Failed to recreate worktree after prune: %v", err)
+		}
+		// Clean up
+		_ = RemoveWorktree(prunePath, true)
 	})
 
 	t.Run("CompareGitVersion", func(t *testing.T) {

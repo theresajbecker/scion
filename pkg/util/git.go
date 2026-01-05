@@ -131,3 +131,9 @@ func RemoveWorktree(path string, deleteBranch bool) error {
 	}
 	return nil
 }
+
+// PruneWorktrees prunes worktree information for worktrees that no longer exist.
+func PruneWorktrees() error {
+	cmd := exec.Command("git", "worktree", "prune")
+	return cmd.Run()
+}

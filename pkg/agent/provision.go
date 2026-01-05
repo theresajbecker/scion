@@ -104,6 +104,9 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 		// Remove existing workspace dir if it exists to allow worktree add
 		_ = util.MakeWritableRecursive(agentWorkspace)
 		os.RemoveAll(agentWorkspace)
+		// Prune worktrees to clean up any stale entries (e.g. from the directory we just removed)
+		_ = util.PruneWorktrees()
+
 		if err := util.CreateWorktree(agentWorkspace, agentName); err != nil {
 			return "", "", nil, fmt.Errorf("failed to create git worktree: %w", err)
 		}
