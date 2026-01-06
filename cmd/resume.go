@@ -10,8 +10,11 @@ var resumeCmd = &cobra.Command{
 	Short: "Resume a stopped scion agent",
 	Long: `Resume an existing stopped LLM agent. 
 The agent will be re-launched with the harness-specific resume flag, 
-preserving its previous state.`,
-	Args: cobra.ExactArgs(1),
+preserving its previous state.
+
+The agent-name is required as the first argument. All subsequent arguments
+form the task prompt to be added to the resumed session (if supported by the harness).`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return RunAgent(cmd, args, true)
 	},

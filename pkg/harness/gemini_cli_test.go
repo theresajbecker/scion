@@ -182,7 +182,7 @@ func TestGeminiGetCommand(t *testing.T) {
 
 	// 4. Resume
 	cmd = g.GetCommand("do something", true, nil)
-	expected = []string{"gemini", "--yolo", "--resume"}
+	expected = []string{"gemini", "--yolo", "--resume", "--prompt-interactive", "do something"}
 	if !reflect.DeepEqual(cmd, expected) {
 		t.Errorf("expected %v, got %v", expected, cmd)
 	}

@@ -36,6 +36,9 @@ func (c *ClaudeCode) GetCommand(task string, resume bool, baseArgs []string) []s
 	args := []string{"claude", "--no-chrome", "--dangerously-skip-permissions"}
 	if resume {
 		args = append(args, "--continue")
+		if task != "" {
+			// TODO: Research how to pass a prompt when resuming in Claude
+		}
 	}
 	args = append(args, baseArgs...)
 	if !resume && task != "" {

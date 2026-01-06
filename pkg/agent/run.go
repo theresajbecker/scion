@@ -67,7 +67,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		return nil, fmt.Errorf("no task provided: prompt.md is empty at %s and no task was given in options", promptFile)
 	}
 
-	if task != "" && promptFileContent != "" && task != promptFileContent {
+	if !opts.Resume && task != "" && promptFileContent != "" && task != promptFileContent {
 		return nil, fmt.Errorf("task conflict: both prompt.md and start options provide a task")
 	}
 

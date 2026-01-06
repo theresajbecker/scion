@@ -152,8 +152,8 @@ func TestBuildCommonRunArgs(t *testing.T) {
 			wantIn: []string{
 				"-e FOO=BAR",
 				"gemini --yolo --resume",
+				"--prompt-interactive hello",
 			},
-			wantOut: []string{"--prompt-interactive hello"},
 		},
 		{
 			name: "resume and tmux",
@@ -166,9 +166,8 @@ func TestBuildCommonRunArgs(t *testing.T) {
 				Resume:  true,
 			},
 			wantIn: []string{
-				"tmux new-session -s scion gemini --yolo --resume",
+				"tmux new-session -s scion gemini --yolo --resume --prompt-interactive hello",
 			},
-			wantOut: []string{"--prompt-interactive hello"},
 		},
 		{
 			name: "template label",
