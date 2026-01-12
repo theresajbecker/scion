@@ -109,7 +109,6 @@ func SeedTemplateDir(templateDir, templateName, harness, embedDir, configDirName
 		{filepath.Join(templateDir, "scion-agent.json"), scionJSONStr, 0644},
 		{filepath.Join(homeDir, "scion_hook.py"), readEmbed("scion_hook.py"), 0644},
 		{filepath.Join(homeDir, "scion_tool.py"), readCommonEmbed("scion_tool.py"), 0644},
-		{filepath.Join(homeDir, "sciontool"), "#!/bin/bash\npython3 $HOME/scion_tool.py \"$@\"\n", 0755},
 		{filepath.Join(homeDir, ".bashrc"), readEmbed("bashrc"), 0644},
 		{filepath.Join(homeDir, ".tmux.conf"), readCommonEmbed(".tmux.conf"), 0644},
 	}
