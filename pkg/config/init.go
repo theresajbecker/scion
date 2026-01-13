@@ -208,6 +208,10 @@ func InitProject(targetDir string) error {
 		return fmt.Errorf("failed to seed gemini template: %w", err)
 	}
 
+	if err := SeedTemplateDir(filepath.Join(templatesDir, "claude"), "claude", "claude", "claude", ".claude", false); err != nil {
+		return fmt.Errorf("failed to seed claude template: %w", err)
+	}
+
 	if err := SeedTemplateDir(filepath.Join(templatesDir, "opencode"), "opencode", "opencode", "opencode", ".config/opencode", false); err != nil {
 		return fmt.Errorf("failed to seed opencode template: %w", err)
 	}
