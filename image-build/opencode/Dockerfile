@@ -7,6 +7,6 @@ FROM ${BASE_IMAGE}
 RUN npm install -g opencode-ai \
   && npm cache clean --force
 # Ensure opencode is in PATH
-# ENV PATH="/home/node/.opencode/bin:${PATH}"
+# ENV PATH="/home/scion/.opencode/bin:${PATH}"
 
 CMD ["opencode"]

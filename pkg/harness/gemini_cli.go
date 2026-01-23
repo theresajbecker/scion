@@ -305,7 +305,7 @@ func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentHome, agentWo
 		}
 		volUpdates = append(volUpdates, api.VolumeMount{
 			Source:   filepath.Join(home, ".config", "gcloud"),
-			Target:   "/home/node/.config/gcloud",
+			Target:   "/home/scion/.config/gcloud",
 			ReadOnly: true,
 		})
 	}

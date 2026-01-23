@@ -11,7 +11,7 @@ WORKSPACE="/Users/ptone/src/claude/testing-workspace"
 
 echo "=== Launching Claude container ==="
 echo "Image:   $IMAGE"
-echo "Mount:   $HOME -> /home/node"
+echo "Mount:   $HOME -> /home/scion"
 echo "Workdir: $WORKSPACE"
 
 # Ensure the workspace directory exists on the host
@@ -21,7 +21,7 @@ mkdir -p "$WORKSPACE"
 RUN_CMD=(
   container run -it
   --rm
-  -v "${HOME}:/home/node"
+  -v "${HOME}:/home/scion"
   -v "${WORKSPACE}:${WORKSPACE}"
   -w "${WORKSPACE}"
   "$IMAGE"

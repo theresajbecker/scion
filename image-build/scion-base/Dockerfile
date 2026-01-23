@@ -116,12 +116,17 @@ COPY --from=builder /usr/local/bin/git /usr/local/bin/git
 COPY --from=builder /usr/local/libexec/git-core /usr/local/libexec/git-core
 COPY --from=builder /usr/local/share/git-core /usr/local/share/git-core
 
+# Create scion user with passwordless sudo
+RUN useradd -m -s /bin/zsh -u 1001 scion && \
+    echo "scion ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/scion && \
+    chmod 0440 /etc/sudoers.d/scion
+
 # Setup npm global directory and permissions
 RUN mkdir -p /usr/local/share/npm-global \
-    && chown -R node:node /usr/local/share/npm-global
+    && chown -R scion:scion /usr/local/share/npm-global
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=/usr/local/share/npm-global/bin:/usr/local/go/bin:$PATH
 ENV LC_ALL=C.UTF-8
 
-USER node
+USER scion
 
