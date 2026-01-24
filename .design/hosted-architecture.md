@@ -12,6 +12,17 @@ The architecture introduces:
 
 This distributed model supports fully hosted SaaS scenarios, hybrid local/cloud setups, and "Solo Mode" (standalone CLI) using the same architectural primitives.
 
+### Modes
+
+#### Solo
+This is using the scion CLI more or less in its traditional local way. The state storage is in the form of files in the agent folders, and labels on the running containers.
+
+#### Read-only host
+
+This is pretty much the same as solo, the source truth data is still stored the same as in Solo mode, but the CLI/Manager is reporting to a Hub endoint, and the sciontool also duel writes to both the local state system and to the hub.  Functions like 'scion list' are consulting the local state system. Sciontool starts an instance of itself in daemon mode for heartbeats
+
+#### Connected
+
 ## 2. Goals & Scope
 *   **Distributed Architecture:** Multiple Runtime Hosts can register with a single Scion Hub.
 *   **Centralized State:** Agent metadata is persisted in a central database (Scion Hub), not just local files.
@@ -57,7 +68,7 @@ An execution node responsible for the CRUD lifecycle of agents.
 *   **Interfaces:** Implements a standard API to `Start`, `Stop`, `Delete`, and `Attach` to agents.
 *   **Runtime Providers:**
     *   **Kubernetes:** Orchestrates Pods/PVCs.
-    *   **Docker:** Orchestrates local containers.
+    *   **Docker/Container:** Orchestrates local containers.
 *   **Operational Modes:**
     *   **Connected (Stateful):** Requires a persistent connection to the Scion Hub. The Hub has full control over the agent lifecycle on this host.
     *   **Read-only (Stateless):** An intermediate mode between Solo and Connected. The host is configured with Hub endpoint(s) and informs them of lifecycle events, but no direct control is available from the Scion Hub.
@@ -67,7 +78,7 @@ An execution node responsible for the CRUD lifecycle of agents.
 ### 4.3. Grove (Project)
 A logical grouping of agents.
 *   **Distributed:** A Grove can span multiple Runtime Hosts.
-*   **Identifier:** Uses a persistent ID in the Hub, or a filesystem path in standalone mode.
+*   **Identifier:** Uses a persistent ID in the Hub when distributed
 
 ### 4.4. Scion Tool (Agent-Side)
 The agent-side helper script.
