@@ -9,3 +9,21 @@ TEST_GEMINI_KEY
 
 # agent scratch space
 .scratch/
+
+# web frontend
+web/node_modules/
+web/dist/
+web/.env
+web/.env.local
+web/.env.*.local
+web/coverage/
+*.log
+npm-debug.log*
+
+# IDE / OS (global)
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

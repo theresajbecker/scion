@@ -1,0 +1,5 @@
+This is a test file for static asset serving.
+
+If you can read this, static file serving is working correctly!
+
+Scion Web Frontend v0.1.0
