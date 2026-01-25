@@ -69,31 +69,31 @@ export class ScionStatusBadge extends LitElement {
    * The status to display
    */
   @property({ type: String })
-  accessor status: StatusType = 'neutral';
+  status: StatusType = 'neutral';
 
   /**
    * Optional custom label (defaults to capitalized status)
    */
   @property({ type: String })
-  accessor label = '';
+  label = '';
 
   /**
    * Size variant
    */
   @property({ type: String })
-  accessor size: 'small' | 'medium' | 'large' = 'medium';
+  size: 'small' | 'medium' | 'large' = 'medium';
 
   /**
    * Whether to show the status icon
    */
   @property({ type: Boolean })
-  accessor showIcon = true;
+  showIcon = true;
 
   /**
    * Whether to show a pulsing indicator for active states
    */
   @property({ type: Boolean })
-  accessor showPulse = true;
+  showPulse = true;
 
   static override styles = css`
     :host {

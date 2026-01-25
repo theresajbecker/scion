@@ -167,7 +167,7 @@ import { customElement, property } from 'lit/decorators.js';
 @customElement('my-component')
 export class MyComponent extends LitElement {
   @property({ type: String })
-  accessor myProp = 'default';
+  myProp = 'default';
 
   static override styles = css`
     :host { display: block; }

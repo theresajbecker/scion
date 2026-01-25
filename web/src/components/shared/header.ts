@@ -15,31 +15,31 @@ export class ScionHeader extends LitElement {
    * Current authenticated user
    */
   @property({ type: Object })
-  accessor user: User | null = null;
+  user: User | null = null;
 
   /**
    * Current page path for breadcrumb
    */
   @property({ type: String })
-  accessor currentPath = '/';
+  currentPath = '/';
 
   /**
    * Page title to display
    */
   @property({ type: String })
-  accessor pageTitle = 'Dashboard';
+  pageTitle = 'Dashboard';
 
   /**
    * Whether to show the mobile menu button
    */
   @property({ type: Boolean })
-  accessor showMobileMenu = false;
+  showMobileMenu = false;
 
   /**
    * Whether user menu is open
    */
   @state()
-  accessor _menuOpen = false;
+  _menuOpen = false;
 
   static override styles = css`
     :host {

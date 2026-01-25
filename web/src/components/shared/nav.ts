@@ -47,19 +47,19 @@ export class ScionNav extends LitElement {
    * Current authenticated user
    */
   @property({ type: Object })
-  accessor user: User | null = null;
+  user: User | null = null;
 
   /**
    * Current active path for highlighting
    */
   @property({ type: String })
-  accessor currentPath = '/';
+  currentPath = '/';
 
   /**
    * Whether the navigation is collapsed (mobile/tablet)
    */
   @property({ type: Boolean, reflect: true })
-  accessor collapsed = false;
+  collapsed = false;
 
   static override styles = css`
     :host {

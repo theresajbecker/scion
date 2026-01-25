@@ -32,13 +32,13 @@ export class ScionBreadcrumb extends LitElement {
    * Current path for generating breadcrumbs
    */
   @property({ type: String })
-  accessor path = '/';
+  path = '/';
 
   /**
    * Optional custom label for the current page
    */
   @property({ type: String })
-  accessor currentLabel = '';
+  currentLabel = '';
 
   static override styles = css`
     :host {

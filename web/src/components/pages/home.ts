@@ -16,7 +16,7 @@ export class ScionPageHome extends LitElement {
    * Page data from SSR
    */
   @property({ type: Object })
-  accessor pageData: PageData | null = null;
+  pageData: PageData | null = null;
 
   static override styles = css`
     :host {

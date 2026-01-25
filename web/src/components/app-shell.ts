@@ -31,19 +31,19 @@ export class ScionApp extends LitElement {
    * Current authenticated user
    */
   @property({ type: Object })
-  accessor user: User | null = null;
+  user: User | null = null;
 
   /**
    * Current URL path for navigation highlighting
    */
   @property({ type: String })
-  accessor currentPath = '/';
+  currentPath = '/';
 
   /**
    * Whether the mobile drawer is open
    */
   @state()
-  accessor _drawerOpen = false;
+  _drawerOpen = false;
 
   static override styles = css`
     :host {
