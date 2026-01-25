@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -73,6 +76,109 @@ func TestFormatFlagCheck(t *testing.T) {
 					assert.NotContains(t, err.Error(), "format flag")
 					assert.NotContains(t, err.Error(), "invalid format")
 				}
+			}
+		})
+	}
+}
+
+func TestDevAuthWarning(t *testing.T) {
+	// Save and restore original flags
+	origNoHub := noHub
+	origHubEndpoint := hubEndpoint
+	defer func() {
+		noHub = origNoHub
+		hubEndpoint = origHubEndpoint
+	}()
+
+	// Create a temp directory for test settings
+	tmpDir := t.TempDir()
+	scionDir := filepath.Join(tmpDir, ".scion")
+	if err := os.MkdirAll(scionDir, 0755); err != nil {
+		t.Fatalf("failed to create test .scion dir: %v", err)
+	}
+
+	// Create settings.yaml with hub enabled
+	settingsPath := filepath.Join(scionDir, "settings.yaml")
+	settingsContent := `
+hub:
+  enabled: true
+  endpoint: http://localhost:9810
+`
+	if err := os.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+		t.Fatalf("failed to write test settings: %v", err)
+	}
+
+	// Create a dev token file
+	devTokenPath := filepath.Join(scionDir, "dev-token")
+	if err := os.WriteFile(devTokenPath, []byte("scion_dev_testtoken123\n"), 0600); err != nil {
+		t.Fatalf("failed to write test dev token: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		noHubFlag     bool
+		hubEndpoint   string
+		devTokenEnv   string
+		devTokenFile  string
+		expectWarning bool
+	}{
+		{
+			name:          "No hub enabled, no warning",
+			noHubFlag:     true,
+			expectWarning: false,
+		},
+		{
+			name:          "Hub endpoint via flag with dev token env",
+			noHubFlag:     false,
+			hubEndpoint:   "http://localhost:9810",
+			devTokenEnv:   "scion_dev_testtoken123",
+			expectWarning: true,
+		},
+		{
+			name:          "Hub endpoint via flag, no dev token",
+			noHubFlag:     false,
+			hubEndpoint:   "http://localhost:9810",
+			devTokenEnv:   "",
+			expectWarning: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set flags
+			noHub = tt.noHubFlag
+			hubEndpoint = tt.hubEndpoint
+
+			// Set environment
+			if tt.devTokenEnv != "" {
+				os.Setenv("SCION_DEV_TOKEN", tt.devTokenEnv)
+				defer os.Unsetenv("SCION_DEV_TOKEN")
+			} else {
+				os.Unsetenv("SCION_DEV_TOKEN")
+			}
+			os.Unsetenv("SCION_DEV_TOKEN_FILE")
+
+			// Capture stderr
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			// Call the function (use empty grove path as settings won't load in test env)
+			printDevAuthWarningIfNeeded("")
+
+			// Restore stderr and read output
+			w.Close()
+			os.Stderr = oldStderr
+
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			output := buf.String()
+
+			if tt.expectWarning {
+				assert.Contains(t, output, "WARNING")
+				assert.Contains(t, output, "Development authentication enabled")
+			} else {
+				assert.NotContains(t, output, "WARNING")
 			}
 		})
 	}

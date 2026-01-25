@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ptone/scion-agent/pkg/apiclient"
+	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/util"
 	"github.com/spf13/cobra"
 )
@@ -49,6 +51,10 @@ sub-agents with isolated identities, credentials, and workspaces.`,
 				return fmt.Errorf("format flag is not yet supported for command %s", cmd.Name())
 			}
 		}
+
+		// Check for dev auth usage and warn if Hub is enabled
+		printDevAuthWarningIfNeeded(grovePath)
+
 		return nil
 	},
 }
@@ -96,4 +102,45 @@ func GetHubEndpoint(settings interface{ GetHubEndpoint() string }) string {
 // IsHubEnabled returns true if Hub integration is enabled for this invocation.
 func IsHubEnabled() bool {
 	return !noHub
+}
+
+// printDevAuthWarningIfNeeded checks if dev auth is being used with Hub and prints a warning.
+// This function is called on every command invocation via PersistentPreRunE.
+func printDevAuthWarningIfNeeded(grovePath string) {
+	// Skip if --no-hub flag is set
+	if noHub {
+		return
+	}
+
+	// Try to load settings to check if Hub is enabled
+	settings, err := config.LoadSettings(grovePath)
+	if err != nil {
+		// If we can't load settings, skip the warning
+		return
+	}
+
+	// Check if Hub is enabled (either via settings or --hub flag override)
+	hubEnabled := settings.IsHubEnabled() || hubEndpoint != ""
+	if !hubEnabled {
+		return
+	}
+
+	// Check if explicit auth is configured in settings
+	if settings.Hub != nil {
+		if settings.Hub.Token != "" || settings.Hub.APIKey != "" || settings.Hub.HostToken != "" {
+			// Explicit auth configured, not using dev auth
+			return
+		}
+	}
+
+	// Check if a dev token would be used
+	devToken := apiclient.ResolveDevToken()
+	if devToken == "" {
+		// No dev token available
+		return
+	}
+
+	// Dev auth is being used with Hub enabled - print warning to stderr
+	fmt.Fprintf(os.Stderr, "\n%s%s WARNING: Development authentication enabled - not for production use %s\n\n",
+		util.Bold, util.Yellow, util.Reset)
 }
