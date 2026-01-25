@@ -59,10 +59,29 @@ type BucketConfig struct {
 	Prefix   string `json:"prefix,omitempty" yaml:"prefix,omitempty" koanf:"prefix"`       // Prefix/path within the bucket
 }
 
+// HubClientConfig defines settings for connecting to a Scion Hub.
+// These settings can be set via environment variables:
+//   - SCION_HUB_ENDPOINT: The Hub API endpoint URL (e.g., "https://hub.scion.dev")
+//   - SCION_HUB_TOKEN: Bearer token for Hub authentication
+//   - SCION_HUB_API_KEY: API key for Hub authentication (alternative to token)
+type HubClientConfig struct {
+	// Endpoint is the Hub API endpoint URL
+	Endpoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty" koanf:"endpoint"`
+	// Token is a bearer token for authentication
+	Token string `json:"token,omitempty" yaml:"token,omitempty" koanf:"token"`
+	// APIKey is an API key for authentication (alternative to Token)
+	APIKey string `json:"apiKey,omitempty" yaml:"apiKey,omitempty" koanf:"apiKey"`
+	// HostID is the unique identifier for this host when registered with the Hub
+	HostID string `json:"hostId,omitempty" yaml:"hostId,omitempty" koanf:"hostId"`
+	// HostToken is the token received when registering this host with the Hub
+	HostToken string `json:"hostToken,omitempty" yaml:"hostToken,omitempty" koanf:"hostToken"`
+}
+
 type Settings struct {
 	ActiveProfile   string                   `json:"active_profile" yaml:"active_profile" koanf:"active_profile"`
 	DefaultTemplate string                   `json:"default_template,omitempty" yaml:"default_template,omitempty" koanf:"default_template"`
 	Bucket          *BucketConfig            `json:"bucket,omitempty" yaml:"bucket,omitempty" koanf:"bucket"`
+	Hub             *HubClientConfig         `json:"hub,omitempty" yaml:"hub,omitempty" koanf:"hub"`
 	Runtimes        map[string]RuntimeConfig `json:"runtimes" yaml:"runtimes" koanf:"runtimes"`
 	Harnesses       map[string]HarnessConfig `json:"harnesses" yaml:"harnesses" koanf:"harnesses"`
 	Profiles        map[string]ProfileConfig `json:"profiles" yaml:"profiles" koanf:"profiles"`
@@ -457,6 +476,31 @@ func UpdateSetting(grovePath string, key string, value string, global bool) erro
 			current.Bucket = &BucketConfig{}
 		}
 		current.Bucket.Prefix = value
+	case "hub.endpoint":
+		if current.Hub == nil {
+			current.Hub = &HubClientConfig{}
+		}
+		current.Hub.Endpoint = value
+	case "hub.token":
+		if current.Hub == nil {
+			current.Hub = &HubClientConfig{}
+		}
+		current.Hub.Token = value
+	case "hub.apiKey":
+		if current.Hub == nil {
+			current.Hub = &HubClientConfig{}
+		}
+		current.Hub.APIKey = value
+	case "hub.hostId":
+		if current.Hub == nil {
+			current.Hub = &HubClientConfig{}
+		}
+		current.Hub.HostID = value
+	case "hub.hostToken":
+		if current.Hub == nil {
+			current.Hub = &HubClientConfig{}
+		}
+		current.Hub.HostToken = value
 	default:
 		return fmt.Errorf("unknown or complex setting key: %s (manual edit recommended for registries)", key)
 	}
@@ -502,6 +546,31 @@ func GetSettingValue(s *Settings, key string) (string, error) {
 			return s.Bucket.Prefix, nil
 		}
 		return "", nil
+	case "hub.endpoint":
+		if s.Hub != nil {
+			return s.Hub.Endpoint, nil
+		}
+		return "", nil
+	case "hub.token":
+		if s.Hub != nil {
+			return s.Hub.Token, nil
+		}
+		return "", nil
+	case "hub.apiKey":
+		if s.Hub != nil {
+			return s.Hub.APIKey, nil
+		}
+		return "", nil
+	case "hub.hostId":
+		if s.Hub != nil {
+			return s.Hub.HostID, nil
+		}
+		return "", nil
+	case "hub.hostToken":
+		if s.Hub != nil {
+			return s.Hub.HostToken, nil
+		}
+		return "", nil
 	}
 	return "", fmt.Errorf("unknown or complex setting key: %s", key)
 }
@@ -515,5 +584,32 @@ func GetSettingsMap(s *Settings) map[string]string {
 		m["bucket.name"] = s.Bucket.Name
 		m["bucket.prefix"] = s.Bucket.Prefix
 	}
+	if s.Hub != nil {
+		m["hub.endpoint"] = s.Hub.Endpoint
+		// Don't include secrets in the map by default
+		if s.Hub.Token != "" {
+			m["hub.token"] = "********" // Mask token
+		}
+		if s.Hub.APIKey != "" {
+			m["hub.apiKey"] = "********" // Mask API key
+		}
+		m["hub.hostId"] = s.Hub.HostID
+		if s.Hub.HostToken != "" {
+			m["hub.hostToken"] = "********" // Mask host token
+		}
+	}
 	return m
+}
+
+// GetHubEndpoint returns the Hub endpoint from settings, or empty string if not configured.
+func (s *Settings) GetHubEndpoint() string {
+	if s.Hub != nil {
+		return s.Hub.Endpoint
+	}
+	return ""
+}
+
+// IsHubConfigured returns true if Hub settings are configured.
+func (s *Settings) IsHubConfigured() bool {
+	return s.Hub != nil && s.Hub.Endpoint != ""
 }

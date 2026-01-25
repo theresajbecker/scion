@@ -1,0 +1,310 @@
+package hubclient
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func TestNew(t *testing.T) {
+	client, err := New("https://hub.example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected non-nil client")
+	}
+	if client.Agents() == nil {
+		t.Error("expected non-nil agents service")
+	}
+	if client.Groves() == nil {
+		t.Error("expected non-nil groves service")
+	}
+	if client.RuntimeHosts() == nil {
+		t.Error("expected non-nil runtime hosts service")
+	}
+	if client.Templates() == nil {
+		t.Error("expected non-nil templates service")
+	}
+	if client.Users() == nil {
+		t.Error("expected non-nil users service")
+	}
+	if client.Auth() == nil {
+		t.Error("expected non-nil auth service")
+	}
+}
+
+func TestHealth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" {
+			t.Errorf("expected path /healthz, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(HealthResponse{
+			Status:  "ok",
+			Version: "1.0.0",
+			Uptime:  "1h30m",
+		})
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL)
+	health, err := client.Health(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if health.Status != "ok" {
+		t.Errorf("expected status 'ok', got %q", health.Status)
+	}
+	if health.Version != "1.0.0" {
+		t.Errorf("expected version '1.0.0', got %q", health.Version)
+	}
+}
+
+func TestAgentsList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents" {
+			t.Errorf("expected path /api/v1/agents, got %s", r.URL.Path)
+		}
+
+		// Check query params
+		if r.URL.Query().Get("groveId") != "grove-123" {
+			t.Errorf("expected groveId=grove-123, got %s", r.URL.Query().Get("groveId"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"agents": []Agent{
+				{
+					ID:      "uuid-1",
+					AgentID: "agent-1",
+					Name:    "Test Agent 1",
+					Status:  "running",
+				},
+				{
+					ID:      "uuid-2",
+					AgentID: "agent-2",
+					Name:    "Test Agent 2",
+					Status:  "stopped",
+				},
+			},
+			"totalCount": 2,
+		})
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL)
+	resp, err := client.Agents().List(context.Background(), &ListAgentsOptions{
+		GroveID: "grove-123",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Agents) != 2 {
+		t.Errorf("expected 2 agents, got %d", len(resp.Agents))
+	}
+	if resp.Agents[0].Name != "Test Agent 1" {
+		t.Errorf("expected name 'Test Agent 1', got %q", resp.Agents[0].Name)
+	}
+}
+
+func TestAgentsGet(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/agents/test-agent" {
+			t.Errorf("expected path /api/v1/agents/test-agent, got %s", r.URL.Path)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Agent{
+			ID:      "uuid-123",
+			AgentID: "test-agent",
+			Name:    "Test Agent",
+			Status:  "running",
+			Created: time.Now(),
+		})
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL)
+	agent, err := client.Agents().Get(context.Background(), "test-agent")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if agent.AgentID != "test-agent" {
+		t.Errorf("expected agentId 'test-agent', got %q", agent.AgentID)
+	}
+	if agent.Name != "Test Agent" {
+		t.Errorf("expected name 'Test Agent', got %q", agent.Name)
+	}
+}
+
+func TestAgentsCreate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+
+		var req CreateAgentRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("failed to decode request: %v", err)
+		}
+		if req.Name != "new-agent" {
+			t.Errorf("expected name 'new-agent', got %q", req.Name)
+		}
+		if req.GroveID != "grove-123" {
+			t.Errorf("expected groveId 'grove-123', got %q", req.GroveID)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(CreateAgentResponse{
+			Agent: &Agent{
+				ID:      "uuid-new",
+				AgentID: "new-agent",
+				Name:    "new-agent",
+				GroveID: "grove-123",
+				Status:  "provisioning",
+			},
+		})
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL)
+	resp, err := client.Agents().Create(context.Background(), &CreateAgentRequest{
+		Name:    "new-agent",
+		GroveID: "grove-123",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Agent.AgentID != "new-agent" {
+		t.Errorf("expected agentId 'new-agent', got %q", resp.Agent.AgentID)
+	}
+}
+
+func TestAgentsDelete(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agents/agent-to-delete" {
+			t.Errorf("expected path /api/v1/agents/agent-to-delete, got %s", r.URL.Path)
+		}
+
+		// Check query params
+		if r.URL.Query().Get("deleteFiles") != "true" {
+			t.Errorf("expected deleteFiles=true")
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL)
+	err := client.Agents().Delete(context.Background(), "agent-to-delete", &DeleteAgentOptions{
+		DeleteFiles: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGrovesRegister(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/groves/register" {
+			t.Errorf("expected path /api/v1/groves/register, got %s", r.URL.Path)
+		}
+
+		var req RegisterGroveRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("failed to decode request: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(RegisterGroveResponse{
+			Grove: &Grove{
+				ID:        "grove-uuid",
+				Name:      req.Name,
+				GitRemote: req.GitRemote,
+			},
+			Host: &RuntimeHost{
+				ID:   "host-uuid",
+				Name: req.Host.Name,
+			},
+			Created:   true,
+			HostToken: "secret-host-token",
+		})
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL)
+	resp, err := client.Groves().Register(context.Background(), &RegisterGroveRequest{
+		Name:      "my-project",
+		GitRemote: "git@github.com:org/repo.git",
+		Path:      "/path/to/.scion",
+		Mode:      "connected",
+		Host: &HostInfo{
+			Name:    "Dev Laptop",
+			Version: "1.0.0",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Created {
+		t.Error("expected created=true")
+	}
+	if resp.HostToken != "secret-host-token" {
+		t.Errorf("expected hostToken 'secret-host-token', got %q", resp.HostToken)
+	}
+}
+
+func TestWithBearerToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer my-token" {
+			t.Errorf("expected 'Bearer my-token', got %q", auth)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(HealthResponse{Status: "ok"})
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL, WithBearerToken("my-token"))
+	_, err := client.Health(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWithAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey != "my-api-key" {
+			t.Errorf("expected 'my-api-key', got %q", apiKey)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(HealthResponse{Status: "ok"})
+	}))
+	defer server.Close()
+
+	client, _ := New(server.URL, WithAPIKey("my-api-key"))
+	_, err := client.Health(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

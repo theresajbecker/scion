@@ -43,11 +43,31 @@ func LoadSettingsKoanf(grovePath string) (*Settings, error) {
 	//       SCION_BUCKET_PROVIDER -> bucket.provider
 	//       SCION_BUCKET_NAME -> bucket.name
 	//       SCION_BUCKET_PREFIX -> bucket.prefix
+	//       SCION_HUB_ENDPOINT -> hub.endpoint
+	//       SCION_HUB_TOKEN -> hub.token
+	//       SCION_HUB_API_KEY -> hub.apiKey
+	//       SCION_HUB_HOST_ID -> hub.hostId
+	//       SCION_HUB_HOST_TOKEN -> hub.hostToken
 	_ = k.Load(env.Provider("SCION_", ".", func(s string) string {
 		key := strings.ToLower(strings.TrimPrefix(s, "SCION_"))
 		// Handle nested bucket keys
 		if strings.HasPrefix(key, "bucket_") {
 			return "bucket." + strings.TrimPrefix(key, "bucket_")
+		}
+		// Handle nested hub keys
+		if strings.HasPrefix(key, "hub_") {
+			subkey := strings.TrimPrefix(key, "hub_")
+			// Convert snake_case to camelCase for specific keys
+			switch subkey {
+			case "api_key":
+				return "hub.apiKey"
+			case "host_id":
+				return "hub.hostId"
+			case "host_token":
+				return "hub.hostToken"
+			default:
+				return "hub." + subkey
+			}
 		}
 		return key
 	}), nil)

@@ -1,0 +1,285 @@
+package hubclient
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+
+	"github.com/ptone/scion-agent/pkg/apiclient"
+)
+
+// GroveService handles grove operations.
+type GroveService interface {
+	// List returns groves matching the filter criteria.
+	List(ctx context.Context, opts *ListGrovesOptions) (*ListGrovesResponse, error)
+
+	// Get returns a single grove by ID.
+	Get(ctx context.Context, groveID string) (*Grove, error)
+
+	// Register registers a grove (upsert based on git remote).
+	Register(ctx context.Context, req *RegisterGroveRequest) (*RegisterGroveResponse, error)
+
+	// Create creates a grove without a contributing host.
+	Create(ctx context.Context, req *CreateGroveRequest) (*Grove, error)
+
+	// Update updates grove metadata.
+	Update(ctx context.Context, groveID string, req *UpdateGroveRequest) (*Grove, error)
+
+	// Delete removes a grove.
+	Delete(ctx context.Context, groveID string, deleteAgents bool) error
+
+	// ListAgents returns agents in a grove.
+	ListAgents(ctx context.Context, groveID string, opts *ListAgentsOptions) (*ListAgentsResponse, error)
+
+	// ListContributors returns runtime hosts contributing to a grove.
+	ListContributors(ctx context.Context, groveID string) (*ListContributorsResponse, error)
+
+	// RemoveContributor removes a host from a grove.
+	RemoveContributor(ctx context.Context, groveID, hostID string) error
+
+	// GetSettings retrieves grove settings.
+	GetSettings(ctx context.Context, groveID string) (*GroveSettings, error)
+
+	// UpdateSettings updates grove settings.
+	UpdateSettings(ctx context.Context, groveID string, settings *GroveSettings) (*GroveSettings, error)
+}
+
+// groveService is the implementation of GroveService.
+type groveService struct {
+	c *client
+}
+
+// ListGrovesOptions configures grove list filtering.
+type ListGrovesOptions struct {
+	Visibility string // Filter by visibility
+	GitRemote  string // Filter by git remote (exact or prefix)
+	HostID     string // Filter by contributing host
+	Labels     map[string]string
+	Page       apiclient.PageOptions
+}
+
+// ListGrovesResponse is the response from listing groves.
+type ListGrovesResponse struct {
+	Groves []Grove
+	Page   apiclient.PageResult
+}
+
+// RegisterGroveRequest is the request for registering a grove.
+type RegisterGroveRequest struct {
+	Name      string            `json:"name"`
+	GitRemote string            `json:"gitRemote"`
+	Path      string            `json:"path"`
+	Host      *HostInfo         `json:"host"`
+	Profiles  []string          `json:"profiles,omitempty"`
+	Mode      string            `json:"mode"` // connected, read-only
+	Labels    map[string]string `json:"labels,omitempty"`
+}
+
+// HostInfo describes the registering host.
+type HostInfo struct {
+	ID                 string            `json:"id,omitempty"`
+	Name               string            `json:"name"`
+	Version            string            `json:"version"`
+	Capabilities       *HostCapabilities `json:"capabilities,omitempty"`
+	Runtimes           []HostRuntime     `json:"runtimes,omitempty"`
+	SupportedHarnesses []string          `json:"supportedHarnesses,omitempty"`
+}
+
+// RegisterGroveResponse is the response from registering a grove.
+type RegisterGroveResponse struct {
+	Grove     *Grove       `json:"grove"`
+	Host      *RuntimeHost `json:"host"`
+	Created   bool         `json:"created"` // True if grove was newly created
+	HostToken string       `json:"hostToken"`
+}
+
+// CreateGroveRequest is the request for creating a grove without a host.
+type CreateGroveRequest struct {
+	Name       string            `json:"name"`
+	GitRemote  string            `json:"gitRemote,omitempty"`
+	Visibility string            `json:"visibility,omitempty"`
+	Labels     map[string]string `json:"labels,omitempty"`
+}
+
+// UpdateGroveRequest is the request for updating a grove.
+type UpdateGroveRequest struct {
+	Name        string            `json:"name,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Visibility  string            `json:"visibility,omitempty"`
+}
+
+// ListContributorsResponse is the response from listing grove contributors.
+type ListContributorsResponse struct {
+	Contributors []GroveContributor `json:"contributors"`
+}
+
+// List returns groves matching the filter criteria.
+func (s *groveService) List(ctx context.Context, opts *ListGrovesOptions) (*ListGrovesResponse, error) {
+	query := url.Values{}
+	if opts != nil {
+		if opts.Visibility != "" {
+			query.Set("visibility", opts.Visibility)
+		}
+		if opts.GitRemote != "" {
+			query.Set("gitRemote", opts.GitRemote)
+		}
+		if opts.HostID != "" {
+			query.Set("hostId", opts.HostID)
+		}
+		for k, v := range opts.Labels {
+			query.Add("label", fmt.Sprintf("%s=%s", k, v))
+		}
+		opts.Page.ToQuery(query)
+	}
+
+	resp, err := s.c.transport.GetWithQuery(ctx, "/api/v1/groves", query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	type listResponse struct {
+		Groves     []Grove `json:"groves"`
+		NextCursor string  `json:"nextCursor,omitempty"`
+		TotalCount int     `json:"totalCount,omitempty"`
+	}
+
+	result, err := apiclient.DecodeResponse[listResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ListGrovesResponse{
+		Groves: result.Groves,
+		Page: apiclient.PageResult{
+			NextCursor: result.NextCursor,
+			TotalCount: result.TotalCount,
+		},
+	}, nil
+}
+
+// Get returns a single grove by ID.
+func (s *groveService) Get(ctx context.Context, groveID string) (*Grove, error) {
+	resp, err := s.c.transport.Get(ctx, "/api/v1/groves/"+groveID, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[Grove](resp)
+}
+
+// Register registers a grove (upsert based on git remote).
+func (s *groveService) Register(ctx context.Context, req *RegisterGroveRequest) (*RegisterGroveResponse, error) {
+	resp, err := s.c.transport.Post(ctx, "/api/v1/groves/register", req, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[RegisterGroveResponse](resp)
+}
+
+// Create creates a grove without a contributing host.
+func (s *groveService) Create(ctx context.Context, req *CreateGroveRequest) (*Grove, error) {
+	resp, err := s.c.transport.Post(ctx, "/api/v1/groves", req, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[Grove](resp)
+}
+
+// Update updates grove metadata.
+func (s *groveService) Update(ctx context.Context, groveID string, req *UpdateGroveRequest) (*Grove, error) {
+	resp, err := s.c.transport.Patch(ctx, "/api/v1/groves/"+groveID, req, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[Grove](resp)
+}
+
+// Delete removes a grove.
+func (s *groveService) Delete(ctx context.Context, groveID string, deleteAgents bool) error {
+	path := "/api/v1/groves/" + groveID
+	if deleteAgents {
+		path += "?deleteAgents=true"
+	}
+	resp, err := s.c.transport.Delete(ctx, path, nil)
+	if err != nil {
+		return err
+	}
+	return apiclient.CheckResponse(resp)
+}
+
+// ListAgents returns agents in a grove.
+func (s *groveService) ListAgents(ctx context.Context, groveID string, opts *ListAgentsOptions) (*ListAgentsResponse, error) {
+	query := url.Values{}
+	if opts != nil {
+		if opts.Status != "" {
+			query.Set("status", opts.Status)
+		}
+		if opts.RuntimeHostID != "" {
+			query.Set("runtimeHostId", opts.RuntimeHostID)
+		}
+		for k, v := range opts.Labels {
+			query.Add("label", fmt.Sprintf("%s=%s", k, v))
+		}
+		opts.Page.ToQuery(query)
+	}
+
+	resp, err := s.c.transport.GetWithQuery(ctx, "/api/v1/groves/"+groveID+"/agents", query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	type listResponse struct {
+		Agents     []Agent `json:"agents"`
+		NextCursor string  `json:"nextCursor,omitempty"`
+		TotalCount int     `json:"totalCount,omitempty"`
+	}
+
+	result, err := apiclient.DecodeResponse[listResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ListAgentsResponse{
+		Agents: result.Agents,
+		Page: apiclient.PageResult{
+			NextCursor: result.NextCursor,
+			TotalCount: result.TotalCount,
+		},
+	}, nil
+}
+
+// ListContributors returns runtime hosts contributing to a grove.
+func (s *groveService) ListContributors(ctx context.Context, groveID string) (*ListContributorsResponse, error) {
+	resp, err := s.c.transport.Get(ctx, "/api/v1/groves/"+groveID+"/contributors", nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[ListContributorsResponse](resp)
+}
+
+// RemoveContributor removes a host from a grove.
+func (s *groveService) RemoveContributor(ctx context.Context, groveID, hostID string) error {
+	resp, err := s.c.transport.Delete(ctx, "/api/v1/groves/"+groveID+"/contributors/"+hostID, nil)
+	if err != nil {
+		return err
+	}
+	return apiclient.CheckResponse(resp)
+}
+
+// GetSettings retrieves grove settings.
+func (s *groveService) GetSettings(ctx context.Context, groveID string) (*GroveSettings, error) {
+	resp, err := s.c.transport.Get(ctx, "/api/v1/groves/"+groveID+"/settings", nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[GroveSettings](resp)
+}
+
+// UpdateSettings updates grove settings.
+func (s *groveService) UpdateSettings(ctx context.Context, groveID string, settings *GroveSettings) (*GroveSettings, error) {
+	resp, err := s.c.transport.Put(ctx, "/api/v1/groves/"+groveID+"/settings", settings, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[GroveSettings](resp)
+}

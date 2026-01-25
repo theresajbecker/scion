@@ -251,3 +251,73 @@ func BranchExists(branchName string) bool {
 	err := cmd.Run()
 	return err == nil
 }
+
+// GetGitRemote returns the origin remote URL of the current repository.
+// Returns empty string if not in a git repo or no origin remote exists.
+func GetGitRemote() string {
+	return GetGitRemoteDir("")
+}
+
+// GetGitRemoteDir returns the origin remote URL of the repository at the specified directory.
+func GetGitRemoteDir(dir string) string {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
+// ExtractRepoName extracts the repository name from a git remote URL.
+// Handles SSH (git@github.com:org/repo.git) and HTTPS (https://github.com/org/repo.git) formats.
+func ExtractRepoName(remoteURL string) string {
+	if remoteURL == "" {
+		return ""
+	}
+
+	// Remove trailing .git
+	remoteURL = strings.TrimSuffix(remoteURL, ".git")
+
+	// Handle SSH format: git@github.com:org/repo
+	if strings.Contains(remoteURL, ":") && strings.Contains(remoteURL, "@") {
+		parts := strings.Split(remoteURL, ":")
+		if len(parts) == 2 {
+			pathParts := strings.Split(parts[1], "/")
+			if len(pathParts) > 0 {
+				return pathParts[len(pathParts)-1]
+			}
+		}
+	}
+
+	// Handle HTTPS format: https://github.com/org/repo
+	parts := strings.Split(remoteURL, "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+
+	return remoteURL
+}
+
+// NormalizeGitRemote normalizes a git remote URL to a canonical form.
+// Converts SSH URLs to HTTPS format for consistent comparison.
+func NormalizeGitRemote(remoteURL string) string {
+	if remoteURL == "" {
+		return ""
+	}
+
+	// Remove trailing .git
+	remoteURL = strings.TrimSuffix(remoteURL, ".git")
+
+	// Handle SSH format: git@github.com:org/repo -> https://github.com/org/repo
+	if strings.HasPrefix(remoteURL, "git@") {
+		// git@github.com:org/repo -> github.com/org/repo
+		remoteURL = strings.TrimPrefix(remoteURL, "git@")
+		remoteURL = strings.Replace(remoteURL, ":", "/", 1)
+		remoteURL = "https://" + remoteURL
+	}
+
+	return remoteURL
+}

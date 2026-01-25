@@ -16,6 +16,8 @@ var (
 	globalMode   bool
 	profile      string
 	outputFormat string
+	hubEndpoint  string // Hub API endpoint override
+	noHub        bool   // Disable Hub integration for this invocation
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -70,4 +72,28 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&globalMode, "global", false, "Use the global grove (equivalent to --grove global)")
 	rootCmd.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Configuration profile to use")
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "format", "", "Output format (e.g., json)")
+
+	// Hub integration flags
+	rootCmd.PersistentFlags().StringVar(&hubEndpoint, "hub", "", "Hub API endpoint URL (overrides SCION_HUB_ENDPOINT)")
+	rootCmd.PersistentFlags().BoolVar(&noHub, "no-hub", false, "Disable Hub integration for this invocation (local-only mode)")
+}
+
+// GetHubEndpoint returns the effective Hub endpoint based on flags and settings.
+// Returns empty string if Hub is disabled or not configured.
+func GetHubEndpoint(settings interface{ GetHubEndpoint() string }) string {
+	if noHub {
+		return ""
+	}
+	if hubEndpoint != "" {
+		return hubEndpoint
+	}
+	if settings != nil {
+		return settings.GetHubEndpoint()
+	}
+	return ""
+}
+
+// IsHubEnabled returns true if Hub integration is enabled for this invocation.
+func IsHubEnabled() bool {
+	return !noHub
 }

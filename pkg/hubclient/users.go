@@ -1,0 +1,83 @@
+package hubclient
+
+import (
+	"context"
+
+	"github.com/ptone/scion-agent/pkg/apiclient"
+)
+
+// UserService handles user operations.
+type UserService interface {
+	// List returns users.
+	List(ctx context.Context, opts *apiclient.PageOptions) (*ListUsersResponse, error)
+
+	// Get returns a user by ID.
+	Get(ctx context.Context, userID string) (*User, error)
+
+	// Update updates a user.
+	Update(ctx context.Context, userID string, req *UpdateUserRequest) (*User, error)
+}
+
+// userService is the implementation of UserService.
+type userService struct {
+	c *client
+}
+
+// ListUsersResponse is the response from listing users.
+type ListUsersResponse struct {
+	Users []User
+	Page  apiclient.PageResult
+}
+
+// UpdateUserRequest is the request for updating a user.
+type UpdateUserRequest struct {
+	DisplayName string           `json:"displayName,omitempty"`
+	Preferences *UserPreferences `json:"preferences,omitempty"`
+}
+
+// List returns users.
+func (s *userService) List(ctx context.Context, opts *apiclient.PageOptions) (*ListUsersResponse, error) {
+	query := opts.ToQuery(nil)
+
+	resp, err := s.c.transport.GetWithQuery(ctx, "/api/v1/users", query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	type listResponse struct {
+		Users      []User `json:"users"`
+		NextCursor string `json:"nextCursor,omitempty"`
+		TotalCount int    `json:"totalCount,omitempty"`
+	}
+
+	result, err := apiclient.DecodeResponse[listResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ListUsersResponse{
+		Users: result.Users,
+		Page: apiclient.PageResult{
+			NextCursor: result.NextCursor,
+			TotalCount: result.TotalCount,
+		},
+	}, nil
+}
+
+// Get returns a user by ID.
+func (s *userService) Get(ctx context.Context, userID string) (*User, error) {
+	resp, err := s.c.transport.Get(ctx, "/api/v1/users/"+userID, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[User](resp)
+}
+
+// Update updates a user.
+func (s *userService) Update(ctx context.Context, userID string, req *UpdateUserRequest) (*User, error) {
+	resp, err := s.c.transport.Patch(ctx, "/api/v1/users/"+userID, req, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[User](resp)
+}

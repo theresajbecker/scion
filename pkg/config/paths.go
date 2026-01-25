@@ -186,3 +186,36 @@ func GetGlobalAgentsDir() (string, error) {
 	}
 	return filepath.Join(g, "agents"), nil
 }
+
+// ResolveGrovePath resolves a grove path to an absolute path and indicates if it's the global grove.
+// If path is empty, it attempts to find the project grove or falls back to global.
+// If path is "global" or "home", it returns the global grove path.
+// Returns the absolute path, whether it's the global grove, and any error.
+func ResolveGrovePath(path string) (string, bool, error) {
+	if path == "" {
+		// Try to find project grove first
+		if p, ok := FindProjectRoot(); ok {
+			return p, false, nil
+		}
+		// Fallback to global
+		g, err := GetGlobalDir()
+		return g, true, err
+	}
+
+	if path == "global" || path == "home" {
+		g, err := GetGlobalDir()
+		return g, true, err
+	}
+
+	// Check if path is the global dir
+	globalDir, _ := GetGlobalDir()
+
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", false, err
+	}
+
+	isGlobal := abs == globalDir
+
+	return abs, isGlobal, nil
+}
