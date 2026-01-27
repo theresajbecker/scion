@@ -555,7 +555,34 @@ hub:
 
 Signed URL expiry is managed internally as a code constant (not configurable). Lifecycle policies (archival, deletion) are managed directly in the cloud provider console by the administrator.
 
-### 6.4. Multi-Region Considerations
+### 6.4. GCS Signed URL Credentials
+
+Generating signed URLs for GCS requires service account credentials with appropriate permissions. The GCS client cannot auto-detect the `GoogleAccessID` from all credential types.
+
+**Development Setup:**
+
+For local development, impersonate a service account that has signed URL permissions:
+
+```bash
+gcloud auth application-default login --impersonate-service-account=[SERVICE_ACCOUNT_EMAIL]
+```
+
+The service account must have the `iam.serviceAccountTokenCreator` role on itself (or the developer must have this role on the service account).
+
+**Production Setup:**
+
+In production, the Hub server must run with a service account that has:
+- `storage.objects.create` and `storage.objects.get` on the storage bucket
+- `iam.serviceAccounts.signBlob` permission (typically via `roles/iam.serviceAccountTokenCreator` on itself)
+
+Supported credential types for signed URL generation:
+- Service account key files
+- Workload Identity (GKE)
+- Impersonated service account credentials
+
+Note: Default application credentials from `gcloud auth application-default login` (without impersonation) do not support signed URL generation.
+
+### 6.5. Multi-Region Considerations
 
 For globally distributed Runtime Hosts, administrators can configure the storage bucket as a multi-region or dual-region bucket in their cloud provider. Scion interacts with the bucket by name and does not manage replication directly.
 
