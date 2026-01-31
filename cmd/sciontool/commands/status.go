@@ -5,13 +5,16 @@ Copyright 2025 The Scion Authors.
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ptone/scion-agent/pkg/sciontool/hooks"
 	"github.com/ptone/scion-agent/pkg/sciontool/hooks/handlers"
+	"github.com/ptone/scion-agent/pkg/sciontool/hub"
 )
 
 // statusCmd represents the status command
@@ -77,6 +80,15 @@ func runStatusAskUser(message string) {
 		logError("Failed to log event: %v", err)
 	}
 
+	// Report to Hub if in hosted mode
+	if hubClient := hub.NewClient(); hubClient != nil && hubClient.IsConfigured() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := hubClient.ReportIdle(ctx, message); err != nil {
+			logError("Failed to report to Hub: %v", err)
+		}
+	}
+
 	fmt.Printf("Agent asked: %s\n", message)
 }
 
@@ -94,6 +106,15 @@ func runStatusTaskCompleted(message string) {
 	logMessage := fmt.Sprintf("Agent completed task: %s", message)
 	if err := loggingHandler.LogEvent(hooks.StateCompleted, logMessage); err != nil {
 		logError("Failed to log event: %v", err)
+	}
+
+	// Report to Hub if in hosted mode
+	if hubClient := hub.NewClient(); hubClient != nil && hubClient.IsConfigured() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := hubClient.ReportTaskCompleted(ctx, message); err != nil {
+			logError("Failed to report to Hub: %v", err)
+		}
 	}
 
 	fmt.Printf("Agent completed: %s\n", message)

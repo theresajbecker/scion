@@ -33,6 +33,9 @@ type ServerConfig struct {
 	// DevAuthToken is the development authentication token.
 	// If non-empty, development auth middleware is enabled.
 	DevAuthToken string
+	// AgentTokenConfig holds configuration for agent JWT tokens.
+	// If SigningKey is empty, a random key is generated.
+	AgentTokenConfig AgentTokenConfig
 	// Debug enables verbose debug logging.
 	Debug bool
 }
@@ -149,14 +152,15 @@ type RemoteAgentInfo struct {
 
 // Server is the Hub API HTTP server.
 type Server struct {
-	config     ServerConfig
-	store      store.Store
-	httpServer *http.Server
-	mux        *http.ServeMux
-	mu         sync.RWMutex
-	startTime  time.Time
-	dispatcher AgentDispatcher // Optional dispatcher for co-located runtime host
-	storage    storage.Storage // Optional storage backend for templates
+	config            ServerConfig
+	store             store.Store
+	httpServer        *http.Server
+	mux               *http.ServeMux
+	mu                sync.RWMutex
+	startTime         time.Time
+	dispatcher        AgentDispatcher     // Optional dispatcher for co-located runtime host
+	storage           storage.Storage     // Optional storage backend for templates
+	agentTokenService *AgentTokenService  // Agent JWT token service
 }
 
 // New creates a new Hub API server.
@@ -166,6 +170,14 @@ func New(cfg ServerConfig, s store.Store) *Server {
 		store:     s,
 		mux:       http.NewServeMux(),
 		startTime: time.Now(),
+	}
+
+	// Initialize agent token service
+	tokenService, err := NewAgentTokenService(cfg.AgentTokenConfig)
+	if err != nil {
+		log.Printf("[Hub] Warning: failed to initialize agent token service: %v", err)
+	} else {
+		srv.agentTokenService = tokenService
 	}
 
 	srv.registerRoutes()
@@ -199,6 +211,27 @@ func (s *Server) GetStorage() storage.Storage {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.storage
+}
+
+// GetAgentTokenService returns the agent token service.
+func (s *Server) GetAgentTokenService() *AgentTokenService {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.agentTokenService
+}
+
+// GenerateAgentToken generates a JWT for an agent.
+// This is a convenience method that delegates to the token service.
+func (s *Server) GenerateAgentToken(agentID, groveID string) (string, error) {
+	s.mu.RLock()
+	tokenService := s.agentTokenService
+	s.mu.RUnlock()
+
+	if tokenService == nil {
+		return "", fmt.Errorf("agent token service not initialized")
+	}
+
+	return tokenService.GenerateAgentToken(agentID, groveID, []AgentTokenScope{ScopeAgentStatusUpdate})
 }
 
 // Start starts the HTTP server.
@@ -301,6 +334,10 @@ func (s *Server) applyMiddleware(h http.Handler) http.Handler {
 	// Apply middleware in reverse order (last applied runs first)
 	h = s.recoveryMiddleware(h)
 	h = s.loggingMiddleware(h)
+	// Apply agent token middleware if available (validates agent JWTs)
+	if s.agentTokenService != nil {
+		h = s.agentTokenService.AgentAuthMiddleware(h)
+	}
 	// Apply dev auth middleware if configured
 	if s.config.DevAuthToken != "" {
 		h = DevAuthMiddlewareWithDebug(s.config.DevAuthToken, s.config.Debug)(h)

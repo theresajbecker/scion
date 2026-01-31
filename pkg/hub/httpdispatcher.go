@@ -224,13 +224,20 @@ func (c *HTTPRuntimeHostClient) MessageAgent(ctx context.Context, hostEndpoint s
 	return nil
 }
 
+// AgentTokenGenerator generates JWT tokens for agents.
+type AgentTokenGenerator interface {
+	GenerateAgentToken(agentID, groveID string) (string, error)
+}
+
 // HTTPAgentDispatcher dispatches agent operations to remote runtime hosts via HTTP.
 // It looks up the runtime host endpoint from the store and uses HTTPRuntimeHostClient
 // to make the actual API calls.
 type HTTPAgentDispatcher struct {
-	store  store.Store
-	client RuntimeHostClient
-	debug  bool
+	store          store.Store
+	client         RuntimeHostClient
+	tokenGenerator AgentTokenGenerator
+	hubEndpoint    string // Hub endpoint URL for agents to call back
+	debug          bool
 }
 
 // NewHTTPAgentDispatcher creates a new HTTP-based agent dispatcher.
@@ -249,6 +256,16 @@ func NewHTTPAgentDispatcherWithClient(s store.Store, client RuntimeHostClient, d
 		client: client,
 		debug:  debug,
 	}
+}
+
+// SetTokenGenerator sets the token generator for agent authentication.
+func (d *HTTPAgentDispatcher) SetTokenGenerator(gen AgentTokenGenerator) {
+	d.tokenGenerator = gen
+}
+
+// SetHubEndpoint sets the Hub endpoint URL that agents will use to call back.
+func (d *HTTPAgentDispatcher) SetHubEndpoint(endpoint string) {
+	d.hubEndpoint = endpoint
 }
 
 // getHostEndpoint retrieves the endpoint URL for a runtime host.
@@ -280,10 +297,24 @@ func (d *HTTPAgentDispatcher) DispatchAgentCreate(ctx context.Context, agent *st
 
 	// Build the remote create request
 	req := &RemoteCreateAgentRequest{
-		AgentID: agent.ID,
-		Name:    agent.Name,
-		GroveID: agent.GroveID,
-		UserID:  agent.OwnerID,
+		AgentID:     agent.ID,
+		Name:        agent.Name,
+		GroveID:     agent.GroveID,
+		UserID:      agent.OwnerID,
+		HubEndpoint: d.hubEndpoint,
+	}
+
+	// Generate agent token if token generator is available
+	if d.tokenGenerator != nil {
+		token, err := d.tokenGenerator.GenerateAgentToken(agent.ID, agent.GroveID)
+		if err != nil {
+			if d.debug {
+				log.Printf("[HTTPDispatcher] Warning: failed to generate agent token: %v", err)
+			}
+			// Continue without token - agent will operate in unauthenticated mode
+		} else {
+			req.AgentToken = token
+		}
 	}
 
 	// Add configuration if available

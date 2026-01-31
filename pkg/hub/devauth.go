@@ -46,6 +46,27 @@ func DevAuthMiddlewareWithDebug(validToken string, debug bool) func(http.Handler
 				return
 			}
 
+			// Check if already authenticated by agent token middleware
+			if GetAgentFromContext(r.Context()) != nil {
+				if debug {
+					log.Printf("[Hub] Auth success: agent token already validated")
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check for X-Scion-Agent-Token header - if present, skip dev auth
+			// (the agent token middleware will have validated it or rejected it)
+			if r.Header.Get("X-Scion-Agent-Token") != "" {
+				// Agent token was present but not validated - reject
+				if debug {
+					log.Printf("[Hub] Auth failed: X-Scion-Agent-Token present but not validated")
+				}
+				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized,
+					"invalid agent token", nil)
+				return
+			}
+
 			// Extract token from Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {

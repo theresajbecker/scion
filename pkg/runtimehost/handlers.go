@@ -190,6 +190,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	// Build merged environment:
 	// 1. Start with resolvedEnv (from Hub, contains user/grove/host vars and secrets)
 	// 2. Override with config.Env (explicitly set in request)
+	// 3. Add Hub authentication credentials if provided
 	env := make(map[string]string)
 
 	// First, apply resolved env from Hub (if present)
@@ -207,6 +208,18 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 				env[parts[0]] = parts[1]
 			}
 		}
+	}
+
+	// Add Hub authentication credentials if provided
+	// These enable the agent (via sciontool) to authenticate with the Hub
+	if req.AgentToken != "" {
+		env["SCION_HUB_TOKEN"] = req.AgentToken
+	}
+	if req.HubEndpoint != "" {
+		env["SCION_HUB_URL"] = req.HubEndpoint
+	}
+	if req.AgentID != "" {
+		env["SCION_AGENT_ID"] = req.AgentID
 	}
 
 	opts := api.StartOptions{
