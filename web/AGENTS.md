@@ -128,7 +128,7 @@ web/
 | `GOOGLE_CLIENT_SECRET` | - | Google OAuth client secret |
 | `GITHUB_CLIENT_ID` | - | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | - | GitHub OAuth client secret |
-| `AUTHORIZED_DOMAINS` | - | Comma-separated list of authorized email domains |
+| `SCION_AUTHORIZED_DOMAINS` | - | Comma-separated list of authorized email domains |
 
 ## Development Authentication
 

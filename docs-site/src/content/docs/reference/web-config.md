@@ -13,7 +13,7 @@ The Web Dashboard is configured primarily through environment variables that con
 - **Authentication**:
   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: Credentials for Google OAuth.
   - `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`: Credentials for GitHub OAuth.
-  - `AUTHORIZED_DOMAINS`: A comma-separated list of email domains allowed to sign in.
+  - `SCION_AUTHORIZED_DOMAINS`: A comma-separated list of email domains allowed to sign in.
 - **Development Auth**:
   - `SCION_DEV_AUTH_ENABLED`: Enables local development auto-login.
   - `SCION_DEV_TOKEN`: Explicit development token for API proxying.

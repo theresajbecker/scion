@@ -181,6 +181,13 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if user's email domain is authorized
+	if !isEmailAuthorized(req.Email, s.config.AuthorizedDomains) {
+		writeError(w, http.StatusForbidden, "unauthorized_domain",
+			"your email domain is not authorized", nil)
+		return
+	}
+
 	// TODO: In production, validate the provider token with the OAuth provider
 	// For now, we trust the provided information (suitable for dev mode)
 
@@ -709,6 +716,13 @@ func (s *Server) handleCLIAuthToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if user's email domain is authorized
+	if !isEmailAuthorized(userInfo.Email, s.config.AuthorizedDomains) {
+		writeError(w, http.StatusForbidden, "unauthorized_domain",
+			"your email domain is not authorized", nil)
+		return
+	}
+
 	// Find or create user
 	user, err := s.store.GetUserByEmail(ctx, userInfo.Email)
 	if err != nil {
@@ -770,4 +784,30 @@ func (s *Server) handleCLIAuthToken(w http.ResponseWriter, r *http.Request) {
 // generateID generates a new UUID.
 func generateID() string {
 	return uuid.New().String()
+}
+
+// isEmailAuthorized checks if an email address is from an authorized domain.
+// If authorizedDomains is empty, all emails are allowed.
+func isEmailAuthorized(email string, authorizedDomains []string) bool {
+	// If no domains are configured, allow all
+	if len(authorizedDomains) == 0 {
+		return true
+	}
+
+	// Extract domain from email
+	atIndex := strings.LastIndex(email, "@")
+	if atIndex == -1 {
+		return false
+	}
+
+	domain := strings.ToLower(email[atIndex+1:])
+
+	// Check if domain is in the authorized list
+	for _, authorized := range authorizedDomains {
+		if strings.ToLower(authorized) == domain {
+			return true
+		}
+	}
+
+	return false
 }

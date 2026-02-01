@@ -30,7 +30,7 @@ GITHUB_CLIENT_ID=<your-github-client-id>
 GITHUB_CLIENT_SECRET=<your-github-client-secret>
 
 # Authorization (optional)
-AUTHORIZED_DOMAINS=example.com,company.org  # Comma-separated list of allowed email domains
+SCION_AUTHORIZED_DOMAINS=example.com,company.org  # Comma-separated list of allowed email domains
 ```
 
 ---
@@ -225,21 +225,21 @@ The web frontend supports basic domain-based authorization. Users can only log i
 
 ### Configure Authorized Domains
 
-Set the `AUTHORIZED_DOMAINS` environment variable with a comma-separated list:
+Set the `SCION_AUTHORIZED_DOMAINS` environment variable with a comma-separated list:
 
 ```bash
 # Allow users from these email domains
-AUTHORIZED_DOMAINS=example.com,mycompany.org
+SCION_AUTHORIZED_DOMAINS=example.com,mycompany.org
 
 # For development, allow all domains (not recommended for production)
-AUTHORIZED_DOMAINS=*
+SCION_AUTHORIZED_DOMAINS=*
 ```
 
 ### How It Works
 
 1. User authenticates via Google or GitHub
 2. The frontend extracts the email domain from the user's email
-3. If the domain matches any in `AUTHORIZED_DOMAINS`, access is granted
+3. If the domain matches any in `SCION_AUTHORIZED_DOMAINS`, access is granted
 4. Otherwise, the user sees an "Unauthorized" error page
 
 ---
@@ -273,7 +273,7 @@ GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 
 # Authorization
-AUTHORIZED_DOMAINS=example.com,mycompany.org
+SCION_AUTHORIZED_DOMAINS=example.com,mycompany.org
 ```
 
 > **Important**: Add `web/.env` to your `.gitignore` file!
@@ -465,7 +465,7 @@ dev:
 | `web.auth.google.client_secret` | `GOOGLE_CLIENT_SECRET` |
 | `web.auth.github.client_id` | `GITHUB_CLIENT_ID` |
 | `web.auth.github.client_secret` | `GITHUB_CLIENT_SECRET` |
-| `web.auth.authorized_domains` | `AUTHORIZED_DOMAINS` (comma-separated) |
+| `web.auth.authorized_domains` | `SCION_AUTHORIZED_DOMAINS` (comma-separated) |
 | `web.session.secret` | `SESSION_SECRET` |
 | `web.session.max_age_hours` | `SESSION_MAX_AGE` (in milliseconds) |
 | `dev.auth_enabled` | `SCION_DEV_AUTH_ENABLED` |

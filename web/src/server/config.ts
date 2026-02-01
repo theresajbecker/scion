@@ -136,7 +136,7 @@ export function loadConfig(): AppConfig {
       googleClientSecret: getEnvString('SCION_SERVER_OAUTH_WEB_GOOGLE_CLIENTSECRET', ''),
       githubClientId: getEnvString('SCION_SERVER_OAUTH_WEB_GITHUB_CLIENTID', ''),
       githubClientSecret: getEnvString('SCION_SERVER_OAUTH_WEB_GITHUB_CLIENTSECRET', ''),
-      authorizedDomains: getEnvStringArray('AUTHORIZED_DOMAINS', []),
+      authorizedDomains: getEnvStringArray('SCION_AUTHORIZED_DOMAINS', []),
     },
   };
 }

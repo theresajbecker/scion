@@ -47,6 +47,9 @@ type ServerConfig struct {
 	Debug bool
 	// OAuthConfig holds OAuth provider credentials for CLI authentication.
 	OAuthConfig OAuthConfig
+	// AuthorizedDomains is a list of email domains allowed to authenticate.
+	// If empty, all domains are allowed.
+	AuthorizedDomains []string
 }
 
 // DefaultServerConfig returns the default server configuration.
@@ -219,6 +222,11 @@ func New(cfg ServerConfig, s store.Store) *Server {
 		log.Printf("[Hub]   SCION_SERVER_OAUTH_CLI_GOOGLE_CLIENTID")
 		log.Printf("[Hub]   SCION_SERVER_OAUTH_CLI_GOOGLE_CLIENTSECRET")
 		log.Printf("[Hub]   (or use server.yaml configuration)")
+	}
+
+	// Log authorized domains if configured
+	if len(cfg.AuthorizedDomains) > 0 {
+		log.Printf("[Hub] Authorized domains: %s", strings.Join(cfg.AuthorizedDomains, ", "))
 	}
 
 	// Build unified auth configuration

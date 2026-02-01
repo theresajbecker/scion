@@ -51,7 +51,7 @@ export GITHUB_CLIENT_SECRET="your-client-secret"
 If you want to restrict login to specific email domains (e.g., your company domain):
 
 ```bash
-export AUTHORIZED_DOMAINS="example.com,mycompany.org"
+export SCION_AUTHORIZED_DOMAINS="example.com,mycompany.org"
 ```
 
 ## 3. Running the Server
@@ -87,4 +87,4 @@ export AUTHORIZED_DOMAINS="example.com,mycompany.org"
   ```bash
   export SESSION_SECRET="a-long-random-string"
   ```
-- **Authorized Domains**: If you set `AUTHORIZED_DOMAINS` and your login email doesn't match, you'll see an error message.
+- **Authorized Domains**: If you set `SCION_AUTHORIZED_DOMAINS` and your login email doesn't match, you'll see an error message.

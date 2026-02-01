@@ -361,3 +361,95 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestIsEmailAuthorized(t *testing.T) {
+	tests := []struct {
+		name              string
+		email             string
+		authorizedDomains []string
+		expected          bool
+	}{
+		{
+			name:              "empty domains allows all",
+			email:             "user@example.com",
+			authorizedDomains: []string{},
+			expected:          true,
+		},
+		{
+			name:              "nil domains allows all",
+			email:             "user@example.com",
+			authorizedDomains: nil,
+			expected:          true,
+		},
+		{
+			name:              "matching domain",
+			email:             "user@example.com",
+			authorizedDomains: []string{"example.com"},
+			expected:          true,
+		},
+		{
+			name:              "non-matching domain",
+			email:             "user@other.com",
+			authorizedDomains: []string{"example.com"},
+			expected:          false,
+		},
+		{
+			name:              "multiple domains - match first",
+			email:             "user@example.com",
+			authorizedDomains: []string{"example.com", "company.org"},
+			expected:          true,
+		},
+		{
+			name:              "multiple domains - match second",
+			email:             "user@company.org",
+			authorizedDomains: []string{"example.com", "company.org"},
+			expected:          true,
+		},
+		{
+			name:              "multiple domains - no match",
+			email:             "user@other.com",
+			authorizedDomains: []string{"example.com", "company.org"},
+			expected:          false,
+		},
+		{
+			name:              "case insensitive - uppercase domain config",
+			email:             "user@example.com",
+			authorizedDomains: []string{"EXAMPLE.COM"},
+			expected:          true,
+		},
+		{
+			name:              "case insensitive - uppercase email domain",
+			email:             "user@EXAMPLE.COM",
+			authorizedDomains: []string{"example.com"},
+			expected:          true,
+		},
+		{
+			name:              "invalid email - no @",
+			email:             "notanemail",
+			authorizedDomains: []string{"example.com"},
+			expected:          false,
+		},
+		{
+			name:              "email with subdomain",
+			email:             "user@sub.example.com",
+			authorizedDomains: []string{"example.com"},
+			expected:          false,
+		},
+		{
+			name:              "email with subdomain - matching subdomain",
+			email:             "user@sub.example.com",
+			authorizedDomains: []string{"sub.example.com"},
+			expected:          true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isEmailAuthorized(tc.email, tc.authorizedDomains)
+			if result != tc.expected {
+				t.Errorf("isEmailAuthorized(%q, %v) = %v, expected %v",
+					tc.email, tc.authorizedDomains, result, tc.expected)
+			}
+		})
+	}
+}

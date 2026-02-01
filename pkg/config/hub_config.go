@@ -80,6 +80,9 @@ type DevAuthConfig struct {
 	Token string `json:"devToken" yaml:"devToken" koanf:"devToken"`
 	// TokenFile is the path to the token file (default: ~/.scion/dev-token).
 	TokenFile string `json:"devTokenFile" yaml:"devTokenFile" koanf:"devTokenFile"`
+	// AuthorizedDomains is a list of email domains allowed to authenticate.
+	// If empty, all domains are allowed.
+	AuthorizedDomains []string `json:"authorizedDomains" yaml:"authorizedDomains" koanf:"authorizedDomains"`
 }
 
 // OAuthProviderConfig holds OAuth credentials for a single provider.
@@ -207,9 +210,10 @@ func LoadGlobalConfig(configPath string) (*GlobalConfig, error) {
 		"database.driver": defaults.Database.Driver,
 		"database.url":    defaults.Database.URL,
 		// Auth defaults
-		"auth.devMode":      defaults.Auth.Enabled,
-		"auth.devToken":     defaults.Auth.Token,
-		"auth.devTokenFile": defaults.Auth.TokenFile,
+		"auth.devMode":           defaults.Auth.Enabled,
+		"auth.devToken":          defaults.Auth.Token,
+		"auth.devTokenFile":      defaults.Auth.TokenFile,
+		"auth.authorizedDomains": []string{},
 		// OAuth defaults (empty by default, loaded from env/config)
 		// Web OAuth client config
 		"oauth.web.google.clientId":     "",
@@ -287,7 +291,28 @@ func LoadGlobalConfig(configPath string) (*GlobalConfig, error) {
 		}
 	}
 
+	// Handle SCION_AUTHORIZED_DOMAINS env var (shorthand for SCION_SERVER_AUTH_AUTHORIZEDDOMAINS)
+	if domains := os.Getenv("SCION_AUTHORIZED_DOMAINS"); domains != "" {
+		config.Auth.AuthorizedDomains = parseCommaSeparatedList(domains)
+	}
+
 	return config, nil
+}
+
+// parseCommaSeparatedList parses a comma-separated string into a slice.
+func parseCommaSeparatedList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // envKeyToConfigKey converts an environment variable key to a config key.
@@ -296,18 +321,19 @@ func LoadGlobalConfig(configPath string) (*GlobalConfig, error) {
 func envKeyToConfigKey(envKey string) string {
 	// Known camelCase field mappings
 	camelCaseFields := map[string]string{
-		"clientid":     "clientId",
-		"clientsecret": "clientSecret",
-		"readtimeout":  "readTimeout",
-		"writetimeout": "writeTimeout",
-		"hostid":       "hostId",
-		"hostname":     "hostName",
-		"hubendpoint":  "hubEndpoint",
-		"devmode":      "devMode",
-		"devtoken":     "devToken",
-		"devtokenfile": "devTokenFile",
-		"loglevel":     "logLevel",
-		"logformat":    "logFormat",
+		"clientid":          "clientId",
+		"clientsecret":      "clientSecret",
+		"readtimeout":       "readTimeout",
+		"writetimeout":      "writeTimeout",
+		"hostid":            "hostId",
+		"hostname":          "hostName",
+		"hubendpoint":       "hubEndpoint",
+		"devmode":           "devMode",
+		"devtoken":          "devToken",
+		"devtokenfile":      "devTokenFile",
+		"loglevel":          "logLevel",
+		"logformat":         "logFormat",
+		"authorizeddomains": "authorizedDomains",
 	}
 
 	// Split by underscore, convert each part
