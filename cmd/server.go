@@ -169,6 +169,31 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		cfg.Auth.Enabled = enableDevAuth
 	}
 
+	// Handle storage configuration
+	if cmd.Flags().Changed("storage-bucket") {
+		cfg.Storage.Bucket = storageBucket
+	}
+	if cmd.Flags().Changed("storage-dir") {
+		cfg.Storage.LocalPath = storageDir
+	}
+
+	// Fallback to legacy environment variable if not set elsewhere
+	if cfg.Storage.Bucket == "" {
+		if val := os.Getenv("SCION_HUB_STORAGE_BUCKET"); val != "" {
+			cfg.Storage.Bucket = val
+			if cfg.Storage.Provider == "local" || cfg.Storage.Provider == "" {
+				cfg.Storage.Provider = "gcs"
+			}
+		}
+	}
+
+	// Update local variables from cfg for backward compatibility in initialization logic
+	storageBucket = cfg.Storage.Bucket
+	storageDir = cfg.Storage.LocalPath
+	if storageBucket != "" && (cfg.Storage.Provider == "local" || cfg.Storage.Provider == "") {
+		cfg.Storage.Provider = "gcs"
+	}
+
 	// Ensure global directory exists and settings are initialized.
 	// This is required for persisting the runtime host identity.
 	globalDir, err := config.GetGlobalDir()

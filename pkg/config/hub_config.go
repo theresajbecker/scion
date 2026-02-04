@@ -136,9 +136,19 @@ type GlobalConfig struct {
 	// OAuth provider settings
 	OAuth OAuthConfig `json:"oauth" yaml:"oauth" koanf:"oauth"`
 
+	// Storage settings
+	Storage StorageConfig `json:"storage" yaml:"storage" koanf:"storage"`
+
 	// Logging settings
 	LogLevel  string `json:"logLevel" yaml:"logLevel" koanf:"logLevel"`
 	LogFormat string `json:"logFormat" yaml:"logFormat" koanf:"logFormat"` // text, json
+}
+
+// StorageConfig holds storage settings.
+type StorageConfig struct {
+	Provider  string `json:"provider" yaml:"provider" koanf:"provider"`
+	Bucket    string `json:"bucket" yaml:"bucket" koanf:"bucket"`
+	LocalPath string `json:"localPath" yaml:"localPath" koanf:"localPath"`
 }
 
 // DefaultGlobalConfig returns the default global configuration.
@@ -177,6 +187,9 @@ func DefaultGlobalConfig() GlobalConfig {
 			Enabled:   false,
 			Token:     "",
 			TokenFile: "", // Will default to ~/.scion/dev-token
+		},
+		Storage: StorageConfig{
+			Provider: "local",
 		},
 		LogLevel:  "info",
 		LogFormat: "text",
@@ -234,11 +247,16 @@ func LoadGlobalConfig(configPath string) (*GlobalConfig, error) {
 		"oauth.cli.google.clientSecret": "",
 		"oauth.cli.github.clientId":     "",
 		"oauth.cli.github.clientSecret": "",
-		"logLevel":                  defaults.LogLevel,
-		"logFormat":                 defaults.LogFormat,
+		// Storage defaults
+		"storage.provider":  defaults.Storage.Provider,
+		"storage.bucket":    defaults.Storage.Bucket,
+		"storage.localPath": defaults.Storage.LocalPath,
+		"logLevel":          defaults.LogLevel,
+		"logFormat":         defaults.LogFormat,
 	}, "."), nil); err != nil {
 		return nil, err
 	}
+
 
 	// 2. Load global config (~/.scion/server.yaml)
 	if globalDir, err := GetGlobalDir(); err == nil {
@@ -346,6 +364,7 @@ func envKeyToConfigKey(envKey string) string {
 		"devtokenfile":      "devTokenFile",
 		"loglevel":          "logLevel",
 		"logformat":         "logFormat",
+		"localpath":         "localPath",
 		"authorizeddomains": "authorizedDomains",
 		"adminemails":       "adminEmails",
 	}
