@@ -160,13 +160,34 @@ func runInit(args []string) int {
 		log.Debug("Hub env: SCION_HUB_URL=%q, SCION_HUB_TOKEN=%v, SCION_AGENT_ID=%q",
 			os.Getenv("SCION_HUB_URL"), os.Getenv("SCION_HUB_TOKEN") != "", os.Getenv("SCION_AGENT_ID"))
 		if hubClient != nil && hubClient.IsConfigured() {
-			hubCtx, hubCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			hubCtx, hubCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			if err := hubClient.ReportRunning(hubCtx, "Agent started"); err != nil {
 				log.Error("Failed to report running status to Hub: %v", err)
 			} else {
 				log.Info("Reported running status to Hub")
 			}
 			hubCancel()
+
+			// Start heartbeat loop in background
+			heartbeatCtx, heartbeatCancel := context.WithCancel(context.Background())
+			heartbeatDone := hubClient.StartHeartbeat(heartbeatCtx, &hub.HeartbeatConfig{
+				Interval: hub.DefaultHeartbeatInterval,
+				Timeout:  hub.DefaultHeartbeatTimeout,
+				OnError: func(err error) {
+					log.Error("Heartbeat failed: %v", err)
+				},
+				OnSuccess: func() {
+					log.Debug("Heartbeat sent successfully")
+				},
+			})
+			log.Info("Started Hub heartbeat loop (interval: %s)", hub.DefaultHeartbeatInterval)
+
+			// Ensure heartbeat is stopped when we exit
+			defer func() {
+				heartbeatCancel()
+				<-heartbeatDone
+				log.Debug("Heartbeat loop stopped")
+			}()
 		} else {
 			log.Debug("Hub client not configured - skipping status report")
 		}

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -208,4 +209,236 @@ func TestGetAgentID(t *testing.T) {
 
 	os.Unsetenv(EnvAgentID)
 	assert.Equal(t, "", GetAgentID())
+}
+
+func TestClient_RetryLogic(t *testing.T) {
+	t.Run("retries on 5xx errors", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			if attempts < 3 {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("server error"))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+		// Use shorter delays for testing
+		client.retryBaseDelay = 10 * time.Millisecond
+		client.retryMaxDelay = 50 * time.Millisecond
+
+		err := client.UpdateStatus(context.Background(), StatusUpdate{Status: StatusRunning})
+		require.NoError(t, err)
+		assert.Equal(t, 3, attempts, "should have retried until success")
+	})
+
+	t.Run("does not retry on 4xx errors", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("bad request"))
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+		client.retryBaseDelay = 10 * time.Millisecond
+
+		err := client.UpdateStatus(context.Background(), StatusUpdate{Status: StatusRunning})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "400")
+		assert.Equal(t, 1, attempts, "should not retry on 4xx errors")
+	})
+
+	t.Run("gives up after max retries", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("server error"))
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+		client.maxRetries = 2
+		client.retryBaseDelay = 10 * time.Millisecond
+
+		err := client.UpdateStatus(context.Background(), StatusUpdate{Status: StatusRunning})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "3 attempts")
+		assert.Equal(t, 3, attempts, "should have attempted 1 + 2 retries")
+	})
+
+	t.Run("respects context cancellation during retry", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+		client.maxRetries = 5
+		client.retryBaseDelay = 100 * time.Millisecond
+
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+
+		err := client.UpdateStatus(ctx, StatusUpdate{Status: StatusRunning})
+		require.Error(t, err)
+		assert.True(t, attempts < 5, "should have stopped early due to context timeout")
+	})
+}
+
+func TestClient_CalculateBackoff(t *testing.T) {
+	client := &Client{
+		retryBaseDelay: 100 * time.Millisecond,
+		retryMaxDelay:  5 * time.Second,
+	}
+
+	// attempt 1: base delay
+	assert.Equal(t, 100*time.Millisecond, client.calculateBackoff(1))
+	// attempt 2: base * 2
+	assert.Equal(t, 200*time.Millisecond, client.calculateBackoff(2))
+	// attempt 3: base * 4
+	assert.Equal(t, 400*time.Millisecond, client.calculateBackoff(3))
+	// attempt 4: base * 8
+	assert.Equal(t, 800*time.Millisecond, client.calculateBackoff(4))
+}
+
+func TestClient_CalculateBackoff_MaxDelay(t *testing.T) {
+	client := &Client{
+		retryBaseDelay: 1 * time.Second,
+		retryMaxDelay:  3 * time.Second,
+	}
+
+	// attempt 1: 1s
+	assert.Equal(t, 1*time.Second, client.calculateBackoff(1))
+	// attempt 2: 2s
+	assert.Equal(t, 2*time.Second, client.calculateBackoff(2))
+	// attempt 3: would be 4s, but capped at max
+	assert.Equal(t, 3*time.Second, client.calculateBackoff(3))
+	// attempt 4: still capped at max
+	assert.Equal(t, 3*time.Second, client.calculateBackoff(4))
+}
+
+func TestClient_StartHeartbeat(t *testing.T) {
+	t.Run("sends heartbeats at interval", func(t *testing.T) {
+		heartbeatCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			heartbeatCount++
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		defer cancel()
+
+		done := client.StartHeartbeat(ctx, &HeartbeatConfig{
+			Interval: 50 * time.Millisecond,
+			Timeout:  100 * time.Millisecond,
+		})
+
+		<-done // Wait for heartbeat loop to finish
+		// With 250ms timeout and 50ms interval, we expect ~4-5 heartbeats
+		assert.GreaterOrEqual(t, heartbeatCount, 3, "should have sent multiple heartbeats")
+	})
+
+	t.Run("calls OnError callback on failure", func(t *testing.T) {
+		errorCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+		// Reduce retries for faster test
+		client.maxRetries = 0
+		client.retryBaseDelay = 5 * time.Millisecond
+
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+
+		done := client.StartHeartbeat(ctx, &HeartbeatConfig{
+			Interval: 50 * time.Millisecond,
+			Timeout:  100 * time.Millisecond,
+			OnError: func(err error) {
+				errorCount++
+			},
+		})
+
+		<-done
+		assert.GreaterOrEqual(t, errorCount, 1, "should have called OnError")
+	})
+
+	t.Run("calls OnSuccess callback on success", func(t *testing.T) {
+		successCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+
+		done := client.StartHeartbeat(ctx, &HeartbeatConfig{
+			Interval: 50 * time.Millisecond,
+			Timeout:  100 * time.Millisecond,
+			OnSuccess: func() {
+				successCount++
+			},
+		})
+
+		<-done
+		assert.GreaterOrEqual(t, successCount, 1, "should have called OnSuccess")
+	})
+
+	t.Run("stops when context is cancelled", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := client.StartHeartbeat(ctx, &HeartbeatConfig{
+			Interval: 1 * time.Second, // Long interval
+			Timeout:  100 * time.Millisecond,
+		})
+
+		// Cancel immediately
+		cancel()
+
+		// Should exit quickly
+		select {
+		case <-done:
+			// Good - loop exited
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("heartbeat loop did not exit after context cancellation")
+		}
+	})
+}
+
+func TestClient_StartHeartbeat_DefaultConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClientWithConfig(server.URL, "test-token", "agent-123")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	// Should work with nil config (uses defaults)
+	done := client.StartHeartbeat(ctx, nil)
+	<-done
 }
