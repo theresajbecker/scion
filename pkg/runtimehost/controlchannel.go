@@ -235,7 +235,13 @@ func (c *ControlChannelClient) buildAuthHeaders() (http.Header, error) {
 	}
 
 	// Build a dummy request for signing
-	req, err := http.NewRequest("GET", c.config.HubEndpoint+"/api/v1/runtime-hosts/connect", nil)
+	u, err := url.Parse(c.config.HubEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hub endpoint: %w", err)
+	}
+	u.Path = "/api/v1/runtime-hosts/connect"
+
+	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}

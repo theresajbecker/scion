@@ -202,6 +202,42 @@ func TestBuildCanonicalString_WithBody(t *testing.T) {
 	}
 }
 
+func TestBuildCanonicalString_PathNormalization(t *testing.T) {
+	// This test documents the behavior of path normalization in the canonical string.
+	// The canonical string MUST match what the server sees.
+	// If a request is made to http://localhost//api/v1/test, the server (Go http.ServeMux)
+	// will often see it as /api/v1/test due to path cleaning, OR it might see the double slash
+	// depending on the middleware.
+
+	tests := []struct {
+		name         string
+		url          string
+		expectedPath string
+	}{
+		{
+			name:         "standard path",
+			url:          "http://localhost/api/v1/test",
+			expectedPath: "/api/v1/test",
+		},
+		{
+			name:         "trailing slash in host (single slash path)",
+			url:          "http://localhost//api/v1/test",
+			expectedPath: "//api/v1/test", // http.NewRequest preserves double slashes in Path
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, tc.url, nil)
+			canonical := BuildCanonicalString(req, "123", "nonce")
+			parts := strings.Split(string(canonical), "\n")
+			if parts[1] != tc.expectedPath {
+				t.Errorf("Expected path %q, got %q", tc.expectedPath, parts[1])
+			}
+		})
+	}
+}
+
 func TestComputeHMAC(t *testing.T) {
 	secret := []byte("test-secret")
 	data := []byte("test-data")

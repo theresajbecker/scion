@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/apiclient"
@@ -105,7 +106,7 @@ func (c *AuthenticatedHostClient) doRequest(ctx context.Context, hostID, method,
 
 // CreateAgent creates an agent on a remote runtime host with HMAC authentication.
 func (c *AuthenticatedHostClient) CreateAgent(ctx context.Context, hostID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
-	endpoint := fmt.Sprintf("%s/api/v1/agents", hostEndpoint)
+	endpoint := fmt.Sprintf("%s/api/v1/agents", strings.TrimSuffix(hostEndpoint, "/"))
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -133,7 +134,7 @@ func (c *AuthenticatedHostClient) CreateAgent(ctx context.Context, hostID, hostE
 
 // StartAgent starts an agent on a remote runtime host with HMAC authentication.
 func (c *AuthenticatedHostClient) StartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/start", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/start", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, nil)
 	if err != nil {
@@ -151,7 +152,7 @@ func (c *AuthenticatedHostClient) StartAgent(ctx context.Context, hostID, hostEn
 
 // StopAgent stops an agent on a remote runtime host with HMAC authentication.
 func (c *AuthenticatedHostClient) StopAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/stop", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/stop", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, nil)
 	if err != nil {
@@ -169,7 +170,7 @@ func (c *AuthenticatedHostClient) StopAgent(ctx context.Context, hostID, hostEnd
 
 // RestartAgent restarts an agent on a remote runtime host with HMAC authentication.
 func (c *AuthenticatedHostClient) RestartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/restart", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/restart", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, nil)
 	if err != nil {
@@ -188,7 +189,7 @@ func (c *AuthenticatedHostClient) RestartAgent(ctx context.Context, hostID, host
 // DeleteAgent deletes an agent from a remote runtime host with HMAC authentication.
 func (c *AuthenticatedHostClient) DeleteAgent(ctx context.Context, hostID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s?deleteFiles=%t&removeBranch=%t",
-		hostEndpoint, url.PathEscape(agentID), deleteFiles, removeBranch)
+		strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID), deleteFiles, removeBranch)
 
 	resp, err := c.doRequest(ctx, hostID, http.MethodDelete, endpoint, nil)
 	if err != nil {
@@ -206,7 +207,7 @@ func (c *AuthenticatedHostClient) DeleteAgent(ctx context.Context, hostID, hostE
 
 // MessageAgent sends a message to an agent on a remote runtime host with HMAC authentication.
 func (c *AuthenticatedHostClient) MessageAgent(ctx context.Context, hostID, hostEndpoint, agentID, message string, interrupt bool) error {
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/message", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/message", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	body, err := json.Marshal(map[string]interface{}{
 		"message":   message,

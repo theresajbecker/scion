@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/store"
@@ -46,7 +47,7 @@ func NewHTTPRuntimeHostClientWithDebug(debug bool) *HTTPRuntimeHostClient {
 // RuntimeHostClient interface for compatibility with AuthenticatedHostClient.
 func (c *HTTPRuntimeHostClient) CreateAgent(ctx context.Context, hostID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
 	_ = hostID // Unused in unauthenticated client
-	endpoint := fmt.Sprintf("%s/api/v1/agents", hostEndpoint)
+	endpoint := fmt.Sprintf("%s/api/v1/agents", strings.TrimSuffix(hostEndpoint, "/"))
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -86,7 +87,7 @@ func (c *HTTPRuntimeHostClient) CreateAgent(ctx context.Context, hostID, hostEnd
 // Note: hostID is unused in this unauthenticated client.
 func (c *HTTPRuntimeHostClient) StartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
 	_ = hostID // Unused in unauthenticated client
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/start", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/start", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	if c.debug {
 		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
@@ -115,7 +116,7 @@ func (c *HTTPRuntimeHostClient) StartAgent(ctx context.Context, hostID, hostEndp
 // Note: hostID is unused in this unauthenticated client.
 func (c *HTTPRuntimeHostClient) StopAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
 	_ = hostID // Unused in unauthenticated client
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/stop", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/stop", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	if c.debug {
 		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
@@ -144,7 +145,7 @@ func (c *HTTPRuntimeHostClient) StopAgent(ctx context.Context, hostID, hostEndpo
 // Note: hostID is unused in this unauthenticated client.
 func (c *HTTPRuntimeHostClient) RestartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
 	_ = hostID // Unused in unauthenticated client
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/restart", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/restart", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	if c.debug {
 		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
@@ -174,7 +175,7 @@ func (c *HTTPRuntimeHostClient) RestartAgent(ctx context.Context, hostID, hostEn
 func (c *HTTPRuntimeHostClient) DeleteAgent(ctx context.Context, hostID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
 	_ = hostID // Unused in unauthenticated client
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s?deleteFiles=%t&removeBranch=%t",
-		hostEndpoint, url.PathEscape(agentID), deleteFiles, removeBranch)
+		strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID), deleteFiles, removeBranch)
 
 	if c.debug {
 		log.Printf("[Hub:Dispatcher] DELETE %s", endpoint)
@@ -203,7 +204,7 @@ func (c *HTTPRuntimeHostClient) DeleteAgent(ctx context.Context, hostID, hostEnd
 // Note: hostID is unused in this unauthenticated client.
 func (c *HTTPRuntimeHostClient) MessageAgent(ctx context.Context, hostID, hostEndpoint, agentID, message string, interrupt bool) error {
 	_ = hostID // Unused in unauthenticated client
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/message", hostEndpoint, url.PathEscape(agentID))
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/message", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	body, err := json.Marshal(map[string]interface{}{
 		"message":   message,

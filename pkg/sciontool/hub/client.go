@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -136,7 +137,7 @@ func (c *Client) UpdateStatus(ctx context.Context, status StatusUpdate) error {
 		return fmt.Errorf("agent ID not set")
 	}
 
-	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/status", c.hubURL, c.agentID)
+	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/status", strings.TrimSuffix(c.hubURL, "/"), c.agentID)
 
 	body, err := json.Marshal(status)
 	if err != nil {
