@@ -6,6 +6,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -13,8 +14,10 @@ import (
 	"github.com/ptone/scion-agent/pkg/sciontool/hooks/session"
 	"github.com/ptone/scion-agent/pkg/sciontool/log"
 	"github.com/ptone/scion-agent/pkg/sciontool/telemetry"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	otellog "go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -44,9 +47,10 @@ type inProgressSpan struct {
 	toolName  string
 }
 
-// TelemetryHandler converts hook events to OTLP spans.
+// TelemetryHandler converts hook events to OTLP spans and emits correlated log records.
 type TelemetryHandler struct {
 	tracer     trace.Tracer
+	logger     *slog.Logger
 	redactor   *telemetry.Redactor
 	spanStore  sync.Map // map[string]*inProgressSpan - keyed by spanKey
 	sessionDir string   // directory for session files (empty = default)
@@ -54,7 +58,8 @@ type TelemetryHandler struct {
 
 // NewTelemetryHandler creates a new telemetry handler.
 // If tp is nil, a noop tracer will be used.
-func NewTelemetryHandler(tp trace.TracerProvider, redactor *telemetry.Redactor) *TelemetryHandler {
+// If lp is non-nil, correlated log records will be emitted alongside spans.
+func NewTelemetryHandler(tp trace.TracerProvider, lp otellog.LoggerProvider, redactor *telemetry.Redactor) *TelemetryHandler {
 	var tracer trace.Tracer
 	if tp != nil {
 		tracer = tp.Tracer("github.com/ptone/scion-agent/pkg/sciontool/hooks/handlers")
@@ -62,10 +67,18 @@ func NewTelemetryHandler(tp trace.TracerProvider, redactor *telemetry.Redactor) 
 		tracer = trace.NewNoopTracerProvider().Tracer("noop")
 	}
 
-	return &TelemetryHandler{
+	h := &TelemetryHandler{
 		tracer:   tracer,
 		redactor: redactor,
 	}
+
+	if lp != nil {
+		h.logger = slog.New(otelslog.NewHandler("sciontool.hooks",
+			otelslog.WithLoggerProvider(lp),
+		))
+	}
+
+	return h
 }
 
 // Handle processes a hook event and emits a corresponding span.
@@ -117,6 +130,7 @@ func (h *TelemetryHandler) startSpan(event *hooks.Event, spanName string) {
 	attrs := h.eventToAttributes(event)
 
 	ctx, span := h.tracer.Start(ctx, spanName, trace.WithAttributes(attrs...))
+	h.emitLogRecord(ctx, event, spanName)
 
 	key := h.spanKey(event.Name, event.Data.ToolName)
 	h.spanStore.Store(key, &inProgressSpan{
@@ -151,6 +165,7 @@ func (h *TelemetryHandler) endSpan(event *hooks.Event, spanName, startEventType 
 		inProgress.span.SetStatus(codes.Ok, "")
 	}
 
+	h.emitLogRecord(inProgress.ctx, event, spanName)
 	inProgress.span.End()
 }
 
@@ -165,7 +180,8 @@ func (h *TelemetryHandler) singleSpan(event *hooks.Event, spanName string) {
 		attrs = append(attrs, sessionAttrs...)
 	}
 
-	_, span := h.tracer.Start(ctx, spanName, trace.WithAttributes(attrs...))
+	ctx, span := h.tracer.Start(ctx, spanName, trace.WithAttributes(attrs...))
+	h.emitLogRecord(ctx, event, spanName)
 
 	// Set status based on success/error
 	if event.Data.Error != "" {
@@ -175,6 +191,74 @@ func (h *TelemetryHandler) singleSpan(event *hooks.Event, spanName string) {
 	}
 
 	span.End()
+}
+
+// emitLogRecord emits a correlated log record for the event.
+// The ctx must carry the active span so the otelslog bridge can extract
+// trace_id and span_id for correlation.
+func (h *TelemetryHandler) emitLogRecord(ctx context.Context, event *hooks.Event, spanName string) {
+	if h.logger == nil {
+		return
+	}
+
+	attrs := []slog.Attr{
+		slog.String("event.name", event.Name),
+	}
+
+	if event.RawName != "" {
+		attrs = append(attrs, slog.String("event.raw_name", event.RawName))
+	}
+	if event.Dialect != "" {
+		attrs = append(attrs, slog.String("event.dialect", event.Dialect))
+	}
+	if event.Data.SessionID != "" {
+		val := event.Data.SessionID
+		if h.redactor != nil && h.redactor.ShouldHash("session_id") {
+			val = telemetry.HashValue(val)
+		}
+		attrs = append(attrs, slog.String("session_id", val))
+	}
+	if event.Data.ToolName != "" {
+		attrs = append(attrs, slog.String("tool_name", event.Data.ToolName))
+	}
+	if event.Data.ToolInput != "" {
+		val := event.Data.ToolInput
+		if h.redactor != nil && h.redactor.ShouldRedact("tool_input") {
+			val = "[REDACTED]"
+		}
+		attrs = append(attrs, slog.String("tool_input", val))
+	}
+	if event.Data.ToolOutput != "" {
+		val := event.Data.ToolOutput
+		if h.redactor != nil && h.redactor.ShouldRedact("tool_output") {
+			val = "[REDACTED]"
+		}
+		attrs = append(attrs, slog.String("tool_output", val))
+	}
+	if event.Data.Prompt != "" {
+		val := event.Data.Prompt
+		if h.redactor != nil && h.redactor.ShouldRedact("prompt") {
+			val = "[REDACTED]"
+		}
+		attrs = append(attrs, slog.String("prompt", val))
+	}
+	if event.Data.Source != "" {
+		attrs = append(attrs, slog.String("source", event.Data.Source))
+	}
+	if event.Data.Reason != "" {
+		attrs = append(attrs, slog.String("reason", event.Data.Reason))
+	}
+	if event.Data.Message != "" {
+		attrs = append(attrs, slog.String("message", event.Data.Message))
+	}
+	if event.Data.Success {
+		attrs = append(attrs, slog.Bool("success", true))
+	}
+	if event.Data.Error != "" {
+		attrs = append(attrs, slog.String("error", event.Data.Error))
+	}
+
+	h.logger.LogAttrs(ctx, slog.LevelInfo, spanName, attrs...)
 }
 
 // getSessionMetricsAttributes parses the latest session file and returns attributes.

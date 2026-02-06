@@ -21,6 +21,8 @@ import (
 	"github.com/ptone/scion-agent/pkg/sciontool/log"
 	"github.com/ptone/scion-agent/pkg/sciontool/supervisor"
 	"github.com/ptone/scion-agent/pkg/sciontool/telemetry"
+	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -129,18 +131,40 @@ func runInit(args []string) int {
 	// Note: The hook command is invoked separately by harnesses, so telemetry
 	// handler registration happens in hook.go. This handler is for lifecycle events.
 	var telemetryHandler *handlers.TelemetryHandler
+	var lifecycleProviders *telemetry.Providers
 	if telemetryPipeline != nil && telemetryPipeline.Config() != nil {
 		redactor := telemetry.NewRedactor(telemetryPipeline.Config().Redaction)
-		// Create a TracerProvider from the exporter if configured
-		// For now, we use a noop tracer - the spans will be created locally
-		// and need to be sent via the OTLP receiver
-		telemetryHandler = handlers.NewTelemetryHandler(nil, redactor)
+
+		// Create real providers for span + log export (batch mode for long-lived init)
+		provCtx := context.Background()
+		var provErr error
+		lifecycleProviders, provErr = telemetry.NewProviders(provCtx, telemetryPipeline.Config(), true)
+		if provErr != nil {
+			log.Error("Failed to create lifecycle telemetry providers: %v", provErr)
+		}
+
+		var tp trace.TracerProvider
+		var lp otellog.LoggerProvider
+		if lifecycleProviders != nil {
+			tp = lifecycleProviders.TracerProvider
+			lp = lifecycleProviders.LoggerProvider
+		}
+		telemetryHandler = handlers.NewTelemetryHandler(tp, lp, redactor)
 		log.Info("Telemetry handler initialized for hook-to-span conversion")
 
 		// Register telemetry handler for lifecycle events
 		for _, eventName := range []string{hooks.EventPreStart, hooks.EventPostStart, hooks.EventPreStop, hooks.EventSessionEnd} {
 			lifecycleManager.RegisterHandler(eventName, telemetryHandler.Handle)
 		}
+	}
+	if lifecycleProviders != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := lifecycleProviders.Shutdown(shutdownCtx); err != nil {
+				log.Error("Failed to shutdown lifecycle telemetry providers: %v", err)
+			}
+		}()
 	}
 
 	// Run pre-start hooks (after setup, before child process)

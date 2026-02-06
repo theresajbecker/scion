@@ -5,10 +5,12 @@ Copyright 2025 The Scion Authors.
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +19,8 @@ import (
 	"github.com/ptone/scion-agent/pkg/sciontool/hooks/handlers"
 	"github.com/ptone/scion-agent/pkg/sciontool/log"
 	"github.com/ptone/scion-agent/pkg/sciontool/telemetry"
+	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -189,7 +193,31 @@ func processHookData(data []byte) error {
 	cfg := telemetry.LoadConfig()
 	if cfg != nil && cfg.Enabled {
 		redactor := telemetry.NewRedactor(cfg.Redaction)
-		telemetryHandler := handlers.NewTelemetryHandler(nil, redactor)
+
+		// Create real providers for span + log export (sync mode for short-lived hook)
+		ctx := context.Background()
+		providers, err := telemetry.NewProviders(ctx, cfg, false)
+		if err != nil {
+			log.Error("Failed to create telemetry providers: %v", err)
+		}
+		if providers != nil {
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := providers.Shutdown(shutdownCtx); err != nil {
+					log.Error("Failed to shutdown telemetry providers: %v", err)
+				}
+			}()
+		}
+
+		var tp trace.TracerProvider
+		var lp otellog.LoggerProvider
+		if providers != nil {
+			tp = providers.TracerProvider
+			lp = providers.LoggerProvider
+		}
+
+		telemetryHandler := handlers.NewTelemetryHandler(tp, lp, redactor)
 		processor.AddHandler(telemetryHandler.Handle)
 	}
 
