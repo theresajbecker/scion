@@ -51,7 +51,7 @@ type ListBrokersOptions struct {
 
 // ListBrokersResponse is the response from listing runtime brokers.
 type ListBrokersResponse struct {
-	Hosts []RuntimeBroker
+	Brokers []RuntimeBroker
 	Page  apiclient.PageResult
 }
 
@@ -157,7 +157,7 @@ func (s *runtimeBrokerService) List(ctx context.Context, opts *ListBrokersOption
 	}
 
 	type listResponse struct {
-		Hosts      []RuntimeBroker `json:"brokers"`
+		Brokers    []RuntimeBroker `json:"brokers"`
 		NextCursor string        `json:"nextCursor,omitempty"`
 		TotalCount int           `json:"totalCount,omitempty"`
 	}
@@ -168,7 +168,7 @@ func (s *runtimeBrokerService) List(ctx context.Context, opts *ListBrokersOption
 	}
 
 	return &ListBrokersResponse{
-		Hosts: result.Brokers,
+		Brokers: result.Brokers,
 		Page: apiclient.PageResult{
 			NextCursor: result.NextCursor,
 			TotalCount: result.TotalCount,

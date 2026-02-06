@@ -246,7 +246,7 @@ func TestGrovesRegister(t *testing.T) {
 				Name:      req.Name,
 				GitRemote: req.GitRemote,
 			},
-			Host: &RuntimeBroker{
+			Broker: &RuntimeBroker{
 				ID:   "host-uuid",
 				Name: req.Broker.Name,
 			},

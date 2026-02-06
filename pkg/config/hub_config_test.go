@@ -256,10 +256,10 @@ func TestEnvKeyToConfigKey(t *testing.T) {
 		{"OAUTH_CLI_GOOGLE_CLIENTSECRET", "oauth.cli.google.clientSecret"},
 		{"OAUTH_WEB_GITHUB_CLIENTID", "oauth.web.github.clientId"},
 		{"OAUTH_WEB_GITHUB_CLIENTSECRET", "oauth.web.github.clientSecret"},
-		{"RUNTIMEHOST_READTIMEOUT", "runtimehost.readTimeout"},
-		{"RUNTIMEHOST_WRITETIMEOUT", "runtimehost.writeTimeout"},
-		{"RUNTIMEHOST_HOSTID", "runtimehost.hostId"},
-		{"RUNTIMEHOST_HOSTNAME", "runtimehost.brokerName"},
+		{"RUNTIMEBROKER_READTIMEOUT", "runtimebroker.readTimeout"},
+		{"RUNTIMEBROKER_WRITETIMEOUT", "runtimebroker.writeTimeout"},
+		{"RUNTIMEBROKER_BROKERID", "runtimebroker.brokerId"},
+		{"RUNTIMEBROKER_BROKERNAME", "runtimebroker.brokerName"},
 		{"AUTH_DEVMODE", "auth.devMode"},
 		{"AUTH_DEVTOKEN", "auth.devToken"},
 		{"LOGLEVEL", "logLevel"},
@@ -391,7 +391,7 @@ func TestRuntimeHostHubEndpointConfiguration(t *testing.T) {
 		configPath := filepath.Join(tmpDir, "server.yaml")
 
 		configContent := `
-runtimeHost:
+runtimeBroker:
   hubEndpoint: "https://rh-hub.example.com"
 `
 		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -416,7 +416,7 @@ runtimeHost:
 	})
 
 	// Note: Env var override for runtimeHost.hubEndpoint doesn't work due to case sensitivity
-	// in koanf. The env var SCION_SERVER_RUNTIMEHOST_HUBENDPOINT maps to "runtimehost.hubEndpoint"
+	// in koanf. The env var SCION_SERVER_RUNTIMEHOST_HUBENDPOINT maps to "runtimebroker.hubEndpoint"
 	// but the config expects "runtimeBroker.hubEndpoint" (camelCase). This is a known limitation.
 	// For RuntimeBroker hubEndpoint, use config file or the settings.yaml fallback (Fix 6).
 }

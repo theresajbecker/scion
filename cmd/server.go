@@ -504,7 +504,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		}
 
 		// Create Runtime Broker server configuration
-		rhCfg := runtimehost.ServerConfig{
+		rhCfg := runtimebroker.ServerConfig{
 			Port:               cfg.RuntimeBroker.Port,
 			Host:               cfg.RuntimeBroker.Host,
 			ReadTimeout:        cfg.RuntimeBroker.ReadTimeout,
@@ -534,7 +534,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		}
 
 		// Create Runtime Broker server
-		rhSrv := runtimehost.New(rhCfg, mgr, rt)
+		rhSrv := runtimebroker.New(rhCfg, mgr, rt)
 
 		log.Printf("Starting Runtime Broker API server on %s:%d (mode: %s)",
 			cfg.RuntimeBroker.Host, cfg.RuntimeBroker.Port, cfg.RuntimeBroker.Mode)

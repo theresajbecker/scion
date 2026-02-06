@@ -1,4 +1,4 @@
-// Package hostclient provides a Go client for the Scion Runtime Broker API.
+// Package brokerclient provides a Go client for the Scion Runtime Broker API.
 package brokerclient
 
 import (
@@ -16,10 +16,10 @@ type Client interface {
 	Agents() AgentService
 
 	// Info returns host information.
-	Info(ctx context.Context) (*runtimehost.BrokerInfoResponse, error)
+	Info(ctx context.Context) (*runtimebroker.BrokerInfoResponse, error)
 
 	// Health checks host availability.
-	Health(ctx context.Context) (*runtimehost.HealthResponse, error)
+	Health(ctx context.Context) (*runtimebroker.HealthResponse, error)
 }
 
 // client is the concrete implementation of Client.
@@ -49,21 +49,21 @@ func (c *client) Agents() AgentService {
 }
 
 // Info returns host information.
-func (c *client) Info(ctx context.Context) (*runtimehost.BrokerInfoResponse, error) {
+func (c *client) Info(ctx context.Context) (*runtimebroker.BrokerInfoResponse, error) {
 	resp, err := c.transport.Get(ctx, "/api/v1/info", nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[runtimehost.BrokerInfoResponse](resp)
+	return apiclient.DecodeResponse[runtimebroker.BrokerInfoResponse](resp)
 }
 
 // Health checks host availability.
-func (c *client) Health(ctx context.Context) (*runtimehost.HealthResponse, error) {
+func (c *client) Health(ctx context.Context) (*runtimebroker.HealthResponse, error) {
 	resp, err := c.transport.Get(ctx, "/healthz", nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[runtimehost.HealthResponse](resp)
+	return apiclient.DecodeResponse[runtimebroker.HealthResponse](resp)
 }
 
 // Option configures a Runtime Broker client.

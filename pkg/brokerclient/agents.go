@@ -12,13 +12,13 @@ import (
 // AgentService handles agent operations on a runtime broker.
 type AgentService interface {
 	// List returns agents on this host.
-	List(ctx context.Context, opts *ListAgentsOptions) (*runtimehost.ListAgentsResponse, error)
+	List(ctx context.Context, opts *ListAgentsOptions) (*runtimebroker.ListAgentsResponse, error)
 
 	// Get returns a single agent by ID.
-	Get(ctx context.Context, agentID string) (*runtimehost.AgentResponse, error)
+	Get(ctx context.Context, agentID string) (*runtimebroker.AgentResponse, error)
 
 	// Create creates and starts a new agent.
-	Create(ctx context.Context, req *runtimehost.CreateAgentRequest) (*runtimehost.CreateAgentResponse, error)
+	Create(ctx context.Context, req *runtimebroker.CreateAgentRequest) (*runtimebroker.CreateAgentResponse, error)
 
 	// Start starts a stopped agent.
 	Start(ctx context.Context, agentID string) error
@@ -36,13 +36,13 @@ type AgentService interface {
 	SendMessage(ctx context.Context, agentID string, message string, interrupt bool) error
 
 	// Exec executes a command in an agent container.
-	Exec(ctx context.Context, agentID string, command []string, timeout int) (*runtimehost.ExecResponse, error)
+	Exec(ctx context.Context, agentID string, command []string, timeout int) (*runtimebroker.ExecResponse, error)
 
 	// GetLogs retrieves agent logs.
 	GetLogs(ctx context.Context, agentID string, opts *GetLogsOptions) (string, error)
 
 	// GetStats retrieves agent resource statistics.
-	GetStats(ctx context.Context, agentID string) (*runtimehost.StatsResponse, error)
+	GetStats(ctx context.Context, agentID string) (*runtimebroker.StatsResponse, error)
 }
 
 // agentService is the implementation of AgentService.
@@ -72,7 +72,7 @@ type GetLogsOptions struct {
 }
 
 // List returns agents on this host.
-func (s *agentService) List(ctx context.Context, opts *ListAgentsOptions) (*runtimehost.ListAgentsResponse, error) {
+func (s *agentService) List(ctx context.Context, opts *ListAgentsOptions) (*runtimebroker.ListAgentsResponse, error) {
 	query := url.Values{}
 	if opts != nil {
 		if opts.GroveID != "" {
@@ -89,25 +89,25 @@ func (s *agentService) List(ctx context.Context, opts *ListAgentsOptions) (*runt
 		return nil, err
 	}
 
-	return apiclient.DecodeResponse[runtimehost.ListAgentsResponse](resp)
+	return apiclient.DecodeResponse[runtimebroker.ListAgentsResponse](resp)
 }
 
 // Get returns a single agent by ID.
-func (s *agentService) Get(ctx context.Context, agentID string) (*runtimehost.AgentResponse, error) {
+func (s *agentService) Get(ctx context.Context, agentID string) (*runtimebroker.AgentResponse, error) {
 	resp, err := s.c.transport.Get(ctx, "/api/v1/agents/"+agentID, nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[runtimehost.AgentResponse](resp)
+	return apiclient.DecodeResponse[runtimebroker.AgentResponse](resp)
 }
 
 // Create creates and starts a new agent.
-func (s *agentService) Create(ctx context.Context, req *runtimehost.CreateAgentRequest) (*runtimehost.CreateAgentResponse, error) {
+func (s *agentService) Create(ctx context.Context, req *runtimebroker.CreateAgentRequest) (*runtimebroker.CreateAgentResponse, error) {
 	resp, err := s.c.transport.Post(ctx, "/api/v1/agents", req, nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[runtimehost.CreateAgentResponse](resp)
+	return apiclient.DecodeResponse[runtimebroker.CreateAgentResponse](resp)
 }
 
 // Start starts a stopped agent.
@@ -166,7 +166,7 @@ func (s *agentService) Delete(ctx context.Context, agentID string, opts *DeleteA
 
 // SendMessage sends a message to an agent.
 func (s *agentService) SendMessage(ctx context.Context, agentID string, message string, interrupt bool) error {
-	body := &runtimehost.MessageRequest{
+	body := &runtimebroker.MessageRequest{
 		Message:   message,
 		Interrupt: interrupt,
 	}
@@ -178,8 +178,8 @@ func (s *agentService) SendMessage(ctx context.Context, agentID string, message 
 }
 
 // Exec executes a command in an agent container.
-func (s *agentService) Exec(ctx context.Context, agentID string, command []string, timeout int) (*runtimehost.ExecResponse, error) {
-	body := &runtimehost.ExecRequest{
+func (s *agentService) Exec(ctx context.Context, agentID string, command []string, timeout int) (*runtimebroker.ExecResponse, error) {
+	body := &runtimebroker.ExecRequest{
 		Command: command,
 		Timeout: timeout,
 	}
@@ -187,7 +187,7 @@ func (s *agentService) Exec(ctx context.Context, agentID string, command []strin
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[runtimehost.ExecResponse](resp)
+	return apiclient.DecodeResponse[runtimebroker.ExecResponse](resp)
 }
 
 // GetLogs retrieves agent logs.
@@ -222,10 +222,10 @@ func (s *agentService) GetLogs(ctx context.Context, agentID string, opts *GetLog
 }
 
 // GetStats retrieves agent resource statistics.
-func (s *agentService) GetStats(ctx context.Context, agentID string) (*runtimehost.StatsResponse, error) {
+func (s *agentService) GetStats(ctx context.Context, agentID string) (*runtimebroker.StatsResponse, error) {
 	resp, err := s.c.transport.Get(ctx, "/api/v1/agents/"+agentID+"/stats", nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[runtimehost.StatsResponse](resp)
+	return apiclient.DecodeResponse[runtimebroker.StatsResponse](resp)
 }
