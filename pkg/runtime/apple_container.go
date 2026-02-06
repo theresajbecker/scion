@@ -32,7 +32,8 @@ func (r *AppleContainerRuntime) Run(ctx context.Context, config RunConfig) (stri
 
 	// For Apple Container, we want to ensure -d and -t are present for 'run'
 	// matching the working manual command.
-	newArgs := []string{"run", "-d", "-t"}
+	// We also increase default memory to 2G.
+	newArgs := []string{"run", "-d", "-t", "-m", "2G"}
 	// Skip the original 'run', '-d', and '-i' from buildCommonRunArgs (indices 0, 1, 2)
 	newArgs = append(newArgs, args[3:]...)
 
