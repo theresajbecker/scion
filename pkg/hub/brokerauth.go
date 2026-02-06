@@ -120,21 +120,21 @@ func NewBrokerAuthService(config BrokerAuthConfig, s store.Store) *BrokerAuthSer
 // Host Registration
 // =============================================================================
 
-// CreateHostRegistrationRequest is the request body for POST /api/v1/hosts.
+// CreateHostRegistrationRequest is the request body for POST /api/v1/brokers.
 type CreateHostRegistrationRequest struct {
 	Name         string            `json:"name"`
 	Capabilities []string          `json:"capabilities,omitempty"`
 	Labels       map[string]string `json:"labels,omitempty"`
 }
 
-// CreateHostRegistrationResponse is the response for POST /api/v1/hosts.
+// CreateHostRegistrationResponse is the response for POST /api/v1/brokers.
 type CreateHostRegistrationResponse struct {
 	BrokerID string    `json:"brokerId"`
 	JoinToken string    `json:"joinToken"` // scion_join_<base64>
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-// HostJoinRequest is the request body for POST /api/v1/hosts/join.
+// HostJoinRequest is the request body for POST /api/v1/brokers/join.
 type HostJoinRequest struct {
 	BrokerID string   `json:"brokerId"`
 	JoinToken    string   `json:"joinToken"`
@@ -143,7 +143,7 @@ type HostJoinRequest struct {
 	Capabilities []string `json:"capabilities,omitempty"`
 }
 
-// HostJoinResponse is the response for POST /api/v1/hosts/join.
+// HostJoinResponse is the response for POST /api/v1/brokers/join.
 type HostJoinResponse struct {
 	SecretKey   string `json:"secretKey"` // Base64-encoded 256-bit key
 	HubEndpoint string `json:"hubEndpoint"`
@@ -500,14 +500,14 @@ func (s *BrokerAuthService) SignRequest(r *http.Request, brokerID string, secret
 // Secret Rotation
 // =============================================================================
 
-// RotateSecretRequest is the request body for POST /api/v1/hosts/{id}/rotate-secret.
+// RotateSecretRequest is the request body for POST /api/v1/brokers/{id}/rotate-secret.
 type RotateSecretRequest struct {
 	// GracePeriod is how long the old secret remains valid after rotation.
 	// Defaults to 5 minutes if not specified.
 	GracePeriod time.Duration `json:"gracePeriod,omitempty"`
 }
 
-// RotateSecretResponse is the response for POST /api/v1/hosts/{id}/rotate-secret.
+// RotateSecretResponse is the response for POST /api/v1/brokers/{id}/rotate-secret.
 type RotateSecretResponse struct {
 	SecretKey   string    `json:"secretKey"`   // Base64-encoded new secret
 	RotatedAt   time.Time `json:"rotatedAt"`

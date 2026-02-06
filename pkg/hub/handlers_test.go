@@ -1039,7 +1039,7 @@ func TestRuntimeHostList(t *testing.T) {
 		t.Fatalf("failed to create runtime host: %v", err)
 	}
 
-	rec := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-hosts", nil)
+	rec := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-brokers", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1073,7 +1073,7 @@ func TestRuntimeHostGetByID(t *testing.T) {
 		t.Fatalf("failed to create runtime host: %v", err)
 	}
 
-	rec := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-hosts/host_gettest", nil)
+	rec := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-brokers/host_gettest", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1135,7 +1135,7 @@ func TestRuntimeHostListWithGroveLocalPath(t *testing.T) {
 	}
 
 	// List runtime hosts filtered by grove - should include localPath
-	rec := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-hosts?groveId=grove_localpath_test", nil)
+	rec := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-brokers?groveId=grove_localpath_test", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1160,7 +1160,7 @@ func TestRuntimeHostListWithGroveLocalPath(t *testing.T) {
 
 	// List all runtime hosts (no grove filter) - should NOT include localPath field structure
 	// (uses ListRuntimeBrokersResponse, not ListRuntimeBrokersWithContributorResponse)
-	rec2 := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-hosts", nil)
+	rec2 := doRequest(t, srv, http.MethodGet, "/api/v1/runtime-brokers", nil)
 	if rec2.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d: %s", rec2.Code, rec2.Body.String())
 	}
@@ -1207,7 +1207,7 @@ func TestHostRegistrationTwoPhaseFlow(t *testing.T) {
 		"capabilities": []string{"sync", "attach"},
 	}
 
-	rec1 := doRequest(t, srv, http.MethodPost, "/api/v1/hosts", createBody)
+	rec1 := doRequest(t, srv, http.MethodPost, "/api/v1/brokers", createBody)
 	if rec1.Code != http.StatusCreated {
 		t.Errorf("Phase 1: expected status 201, got %d: %s", rec1.Code, rec1.Body.String())
 	}
@@ -1236,7 +1236,7 @@ func TestHostRegistrationTwoPhaseFlow(t *testing.T) {
 		"capabilities": []string{"sync", "attach"},
 	}
 
-	rec2 := doRequestNoAuth(t, srv, http.MethodPost, "/api/v1/hosts/join", joinBody)
+	rec2 := doRequestNoAuth(t, srv, http.MethodPost, "/api/v1/brokers/join", joinBody)
 	if rec2.Code != http.StatusOK {
 		t.Errorf("Phase 2: expected status 200, got %d: %s", rec2.Code, rec2.Body.String())
 	}
@@ -1293,7 +1293,7 @@ func TestHostJoinWithInvalidToken(t *testing.T) {
 		"name": "invalid-token-host",
 	}
 
-	rec1 := doRequest(t, srv, http.MethodPost, "/api/v1/hosts", createBody)
+	rec1 := doRequest(t, srv, http.MethodPost, "/api/v1/brokers", createBody)
 	if rec1.Code != http.StatusCreated {
 		t.Fatalf("failed to create host: %s", rec1.Body.String())
 	}
@@ -1310,7 +1310,7 @@ func TestHostJoinWithInvalidToken(t *testing.T) {
 		"hostname":  "test-machine",
 	}
 
-	rec2 := doRequestNoAuth(t, srv, http.MethodPost, "/api/v1/hosts/join", joinBody)
+	rec2 := doRequestNoAuth(t, srv, http.MethodPost, "/api/v1/brokers/join", joinBody)
 	if rec2.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401 for invalid token, got %d: %s", rec2.Code, rec2.Body.String())
 	}

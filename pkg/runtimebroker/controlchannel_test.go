@@ -17,8 +17,8 @@ func TestControlChannelClient_BuildAuthHeaders_Normalization(t *testing.T) {
 		t.Fatalf("Failed to build auth headers: %v", err)
 	}
 
-	// The signature should be generated for /api/v1/runtime-hosts/connect
-	// If it was generated for //api/v1/runtime-hosts/connect, it would be different.
+	// The signature should be generated for /api/v1/runtime-brokers/connect
+	// If it was generated for //api/v1/runtime-brokers/connect, it would be different.
 	// We can't easily check the signature value without reimplementing the logic,
 	// but we can verify the URL construction logic in the code by looking at it.
 
@@ -46,17 +46,17 @@ func TestBuildWebSocketURL_Normalization(t *testing.T) {
 		{
 			name:        "trailing slash",
 			endpoint:    "https://hub.scion.dev/",
-			expectedURL: "wss://hub.scion.dev/api/v1/runtime-hosts/connect",
+			expectedURL: "wss://hub.scion.dev/api/v1/runtime-brokers/connect",
 		},
 		{
 			name:        "no trailing slash",
 			endpoint:    "https://hub.scion.dev",
-			expectedURL: "wss://hub.scion.dev/api/v1/runtime-hosts/connect",
+			expectedURL: "wss://hub.scion.dev/api/v1/runtime-brokers/connect",
 		},
 		{
 			name:        "http endpoint",
 			endpoint:    "http://hub.scion.dev",
-			expectedURL: "ws://hub.scion.dev/api/v1/runtime-hosts/connect",
+			expectedURL: "ws://hub.scion.dev/api/v1/runtime-brokers/connect",
 		},
 	}
 

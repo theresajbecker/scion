@@ -1672,7 +1672,7 @@ func (s *Server) listRuntimeHosts(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRuntimeHostRoutes(w http.ResponseWriter, r *http.Request) {
 	// Extract host ID and remaining path
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/runtime-hosts/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/runtime-brokers/")
 	if path == "" {
 		NotFound(w, "RuntimeBroker")
 		return
@@ -1752,7 +1752,7 @@ func (s *Server) handleRuntimeHostByIDInternal(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleRuntimeHostByID(w http.ResponseWriter, r *http.Request) {
-	id, action := extractAction(r, "/api/v1/runtime-hosts")
+	id, action := extractAction(r, "/api/v1/runtime-brokers")
 
 	if id == "" {
 		NotFound(w, "RuntimeBroker")

@@ -119,7 +119,7 @@ type JoinBrokerResponse struct {
 
 // Create creates a new host registration and returns a join token.
 func (s *runtimeBrokerService) Create(ctx context.Context, req *CreateBrokerRequest) (*CreateBrokerResponse, error) {
-	resp, err := s.c.transport.Post(ctx, "/api/v1/hosts", req, nil)
+	resp, err := s.c.transport.Post(ctx, "/api/v1/brokers", req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func (s *runtimeBrokerService) Create(ctx context.Context, req *CreateBrokerRequ
 
 // Join completes host registration using a join token.
 func (s *runtimeBrokerService) Join(ctx context.Context, req *JoinBrokerRequest) (*JoinBrokerResponse, error) {
-	resp, err := s.c.transport.Post(ctx, "/api/v1/hosts/join", req, nil)
+	resp, err := s.c.transport.Post(ctx, "/api/v1/brokers/join", req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (s *runtimeBrokerService) List(ctx context.Context, opts *ListBrokersOption
 		opts.Page.ToQuery(query)
 	}
 
-	resp, err := s.c.transport.GetWithQuery(ctx, "/api/v1/runtime-hosts", query, nil)
+	resp, err := s.c.transport.GetWithQuery(ctx, "/api/v1/runtime-brokers", query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (s *runtimeBrokerService) List(ctx context.Context, opts *ListBrokersOption
 
 // Get returns a single runtime host by ID.
 func (s *runtimeBrokerService) Get(ctx context.Context, brokerID string) (*RuntimeBroker, error) {
-	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-hosts/"+brokerID, nil)
+	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-brokers/"+brokerID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func (s *runtimeBrokerService) Get(ctx context.Context, brokerID string) (*Runti
 
 // Update updates host metadata.
 func (s *runtimeBrokerService) Update(ctx context.Context, brokerID string, req *UpdateBrokerRequest) (*RuntimeBroker, error) {
-	resp, err := s.c.transport.Patch(ctx, "/api/v1/runtime-hosts/"+brokerID, req, nil)
+	resp, err := s.c.transport.Patch(ctx, "/api/v1/runtime-brokers/"+brokerID, req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func (s *runtimeBrokerService) Update(ctx context.Context, brokerID string, req 
 
 // Delete removes a host from all groves.
 func (s *runtimeBrokerService) Delete(ctx context.Context, brokerID string) error {
-	resp, err := s.c.transport.Delete(ctx, "/api/v1/runtime-hosts/"+brokerID, nil)
+	resp, err := s.c.transport.Delete(ctx, "/api/v1/runtime-brokers/"+brokerID, nil)
 	if err != nil {
 		return err
 	}
@@ -205,7 +205,7 @@ func (s *runtimeBrokerService) Delete(ctx context.Context, brokerID string) erro
 
 // ListGroves returns groves this host contributes to.
 func (s *runtimeBrokerService) ListGroves(ctx context.Context, brokerID string) (*ListBrokerGrovesResponse, error) {
-	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-hosts/"+brokerID+"/groves", nil)
+	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-brokers/"+brokerID+"/groves", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func (s *runtimeBrokerService) ListGroves(ctx context.Context, brokerID string) 
 
 // Heartbeat sends a heartbeat for a host.
 func (s *runtimeBrokerService) Heartbeat(ctx context.Context, brokerID string, status *BrokerHeartbeat) error {
-	resp, err := s.c.transport.Post(ctx, "/api/v1/runtime-hosts/"+brokerID+"/heartbeat", status, nil)
+	resp, err := s.c.transport.Post(ctx, "/api/v1/runtime-brokers/"+brokerID+"/heartbeat", status, nil)
 	if err != nil {
 		return err
 	}

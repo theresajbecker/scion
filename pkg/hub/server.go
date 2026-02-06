@@ -596,8 +596,8 @@ func (s *Server) registerRoutes() {
 	// This handler must come before the generic grove-by-id handler
 	s.mux.HandleFunc("/api/v1/groves/", s.handleGroveRoutes)
 
-	s.mux.HandleFunc("/api/v1/runtime-hosts", s.handleRuntimeHosts)
-	s.mux.HandleFunc("/api/v1/runtime-hosts/", s.handleRuntimeHostRoutes)
+	s.mux.HandleFunc("/api/v1/runtime-brokers", s.handleRuntimeHosts)
+	s.mux.HandleFunc("/api/v1/runtime-brokers/", s.handleRuntimeHostRoutes)
 
 	s.mux.HandleFunc("/api/v1/templates", s.handleTemplatesV2)
 	s.mux.HandleFunc("/api/v1/templates/", s.handleTemplateByIDV2)
@@ -618,12 +618,12 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/policies/", s.handlePolicyRoutes)
 
 	// Host registration endpoints (Runtime Host HMAC authentication)
-	s.mux.HandleFunc("/api/v1/hosts", s.handleBrokersEndpoint)
-	s.mux.HandleFunc("/api/v1/hosts/join", s.handleBrokerJoin)
-	s.mux.HandleFunc("/api/v1/hosts/", s.handleBrokerByIDRoutes)
+	s.mux.HandleFunc("/api/v1/brokers", s.handleBrokersEndpoint)
+	s.mux.HandleFunc("/api/v1/brokers/join", s.handleBrokerJoin)
+	s.mux.HandleFunc("/api/v1/brokers/", s.handleBrokerByIDRoutes)
 
 	// WebSocket control channel endpoint for Runtime Hosts
-	s.mux.HandleFunc("/api/v1/runtime-hosts/connect", s.handleRuntimeHostConnect)
+	s.mux.HandleFunc("/api/v1/runtime-brokers/connect", s.handleRuntimeHostConnect)
 }
 
 // applyMiddleware wraps the handler with middleware.

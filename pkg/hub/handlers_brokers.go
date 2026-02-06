@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// handleBrokersEndpoint handles POST /api/v1/hosts.
+// handleBrokersEndpoint handles POST /api/v1/brokers.
 // Creates a new host registration with join token.
 // Requires admin authentication.
 func (s *Server) handleBrokersEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +66,7 @@ func (s *Server) createBrokerRegistration(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-// handleBrokerJoin handles POST /api/v1/hosts/join.
+// handleBrokerJoin handles POST /api/v1/brokers/join.
 // Completes host registration with join token exchange.
 // This is an unauthenticated endpoint - the join token serves as authentication.
 func (s *Server) handleBrokerJoin(w http.ResponseWriter, r *http.Request) {
@@ -140,10 +140,10 @@ func (s *Server) handleBrokerJoin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handleBrokerByIDRoutes handles routes under /api/v1/hosts/{id}/...
+// handleBrokerByIDRoutes handles routes under /api/v1/brokers/{id}/...
 func (s *Server) handleBrokerByIDRoutes(w http.ResponseWriter, r *http.Request) {
-	// Extract host ID and action from path: /api/v1/hosts/{id}/{action}
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/hosts/")
+	// Extract host ID and action from path: /api/v1/brokers/{id}/{action}
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/brokers/")
 	parts := strings.SplitN(path, "/", 2)
 
 	if len(parts) == 0 || parts[0] == "" {
@@ -165,7 +165,7 @@ func (s *Server) handleBrokerByIDRoutes(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// handleHostRotateSecret handles POST /api/v1/hosts/{id}/rotate-secret.
+// handleHostRotateSecret handles POST /api/v1/brokers/{id}/rotate-secret.
 // Rotates the HMAC secret for a host.
 // Requires admin authentication or host self-rotation.
 func (s *Server) handleHostRotateSecret(w http.ResponseWriter, r *http.Request, brokerID string) {

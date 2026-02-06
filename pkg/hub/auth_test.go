@@ -258,7 +258,7 @@ func TestUnifiedAuthMiddleware_HostAuthPassthrough(t *testing.T) {
 
 	t.Run("request with X-Scion-Broker-ID passes through", func(t *testing.T) {
 		passedThrough = false
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/runtime-hosts/test-host/heartbeat", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/runtime-brokers/test-host/heartbeat", nil)
 		req.Header.Set("X-Scion-Broker-ID", "test-host-id")
 		req.Header.Set("X-Scion-Timestamp", "1234567890")
 		req.Header.Set("X-Scion-Nonce", "test-nonce")
@@ -277,7 +277,7 @@ func TestUnifiedAuthMiddleware_HostAuthPassthrough(t *testing.T) {
 
 	t.Run("request without any auth is rejected", func(t *testing.T) {
 		passedThrough = false
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/runtime-hosts/test-host/heartbeat", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/runtime-brokers/test-host/heartbeat", nil)
 		rec := httptest.NewRecorder()
 
 		handler.ServeHTTP(rec, req)

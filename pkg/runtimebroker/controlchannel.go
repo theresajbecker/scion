@@ -220,7 +220,7 @@ func (c *ControlChannelClient) buildWebSocketURL() (string, error) {
 		u.Scheme = "ws"
 	}
 
-	u.Path = "/api/v1/runtime-hosts/connect"
+	u.Path = "/api/v1/runtime-brokers/connect"
 	return u.String(), nil
 }
 
@@ -239,7 +239,7 @@ func (c *ControlChannelClient) buildAuthHeaders() (http.Header, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid hub endpoint: %w", err)
 	}
-	u.Path = "/api/v1/runtime-hosts/connect"
+	u.Path = "/api/v1/runtime-brokers/connect"
 
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
