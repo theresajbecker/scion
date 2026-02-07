@@ -2,8 +2,8 @@
 set -e
 
 # Pick up PROJECT_ID from env variable, but default to deploy-demo-test
-PROJECT_ID=${PROJECT_ID:-deploy-demo-test}
-REGION=${REGION:-us-central1}
+PROJECT_ID=${PROJECT_ID:-duet01}
+REGION=${REGION:-us-west1}
 SERVICE_NAME=${SERVICE_NAME:-scion-docs}
 
 echo "Deploying Scion Documentation Site..."

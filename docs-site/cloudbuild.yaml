@@ -40,10 +40,9 @@ steps:
       - '$_REGION'
       - '--platform'
       - 'managed'
-      - '--allow-unauthenticated'
 
 substitutions:
-  _REGISTRY: 'us-west1-docker.pkg.dev/${PROJECT_ID}/scion-images'
+  _REGISTRY: 'gcr.io.pkg.dev/${PROJECT_ID}/scion-images'
   _SERVICE_NAME: 'scion-docs'
   _REGION: 'us-central1'
   _GIT_SHA: 'latest'
