@@ -49,14 +49,12 @@ type RuntimeBrokerConfig struct {
 	// WriteTimeout is the maximum duration before timing out writes
 	WriteTimeout time.Duration `json:"writeTimeout" yaml:"writeTimeout" koanf:"writeTimeout"`
 
-	// Mode is the operational mode (currently only "connected" is supported)
-	Mode string `json:"mode" yaml:"mode" koanf:"mode"`
 	// HubEndpoint is the Hub API endpoint for status reporting (when Hub not co-located)
 	HubEndpoint string `json:"hubEndpoint" yaml:"hubEndpoint" koanf:"hubEndpoint"`
 
-	// HostID is a unique identifier for this runtime broker (auto-generated if empty)
+	// BrokerID is a unique identifier for this runtime broker (auto-generated if empty)
 	BrokerID string `json:"brokerId" yaml:"brokerId" koanf:"brokerId"`
-	// HostName is a human-readable name for this runtime broker
+	// BrokerName is a human-readable name for this runtime broker
 	BrokerName string `json:"brokerName" yaml:"brokerName" koanf:"brokerName"`
 
 	// CORS settings
@@ -66,11 +64,6 @@ type RuntimeBrokerConfig struct {
 	CORSAllowedHeaders []string `json:"corsAllowedHeaders" yaml:"corsAllowedHeaders" koanf:"corsAllowedHeaders"`
 	CORSMaxAge         int      `json:"corsMaxAge" yaml:"corsMaxAge" koanf:"corsMaxAge"`
 }
-
-// Runtime Broker operational modes
-const (
-	RuntimeBrokerModeConnected = "connected"
-)
 
 // DatabaseConfig holds database connection settings.
 type DatabaseConfig struct {
@@ -167,13 +160,12 @@ func DefaultGlobalConfig() GlobalConfig {
 			AdminEmails:        []string{},
 		},
 		RuntimeBroker: RuntimeBrokerConfig{
-			Enabled:      false,
-			Port:         9800,
-			Host:         "0.0.0.0",
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 120 * time.Second, // Longer for agent operations
-			Mode:         RuntimeBrokerModeConnected,
-			CORSEnabled:  true,
+			Enabled:            false,
+			Port:               9800,
+			Host:               "0.0.0.0",
+			ReadTimeout:        30 * time.Second,
+			WriteTimeout:       120 * time.Second, // Longer for agent operations
+			CORSEnabled:        true,
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 			CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Broker-Token", "X-API-Key"},
@@ -222,7 +214,6 @@ func LoadGlobalConfig(configPath string) (*GlobalConfig, error) {
 		"runtimeBroker.host":               defaults.RuntimeBroker.Host,
 		"runtimeBroker.readTimeout":        defaults.RuntimeBroker.ReadTimeout,
 		"runtimeBroker.writeTimeout":       defaults.RuntimeBroker.WriteTimeout,
-		"runtimeBroker.mode":               defaults.RuntimeBroker.Mode,
 		"runtimeBroker.corsEnabled":        defaults.RuntimeBroker.CORSEnabled,
 		"runtimeBroker.corsAllowedOrigins": defaults.RuntimeBroker.CORSAllowedOrigins,
 		"runtimeBroker.corsAllowedMethods": defaults.RuntimeBroker.CORSAllowedMethods,

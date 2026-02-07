@@ -168,7 +168,6 @@ func (s *BrokerAuthService) CreateBrokerRegistration(ctx context.Context, req Cr
 		ID:        brokerID,
 		Name:      req.Name,
 		Slug:      slugify(req.Name),
-		Mode:      store.BrokerModeConnected,
 		Status:    store.BrokerStatusOffline,
 		Labels:    req.Labels,
 		Created:   time.Now(),

@@ -212,8 +212,7 @@ func TestValidateBrokerSignature(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host",
 		Slug:    "test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -278,8 +277,7 @@ func TestValidateBrokerSignature_InvalidSignature(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host",
 		Slug:    "test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -334,8 +332,7 @@ func TestValidateBrokerSignature_ClockSkew(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host",
 		Slug:    "test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -431,8 +428,7 @@ func TestBrokerAuthMiddleware(t *testing.T) {
 		ID:      brokerID,
 		Name:    "middleware-test-host",
 		Slug:    "middleware-test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -560,8 +556,7 @@ func TestGenerateAndStoreSecret(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host",
 		Slug:    "test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -609,8 +604,7 @@ func TestGenerateAndStoreSecret_ReturnsExistingSecret(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host",
 		Slug:    "test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -661,8 +655,7 @@ func TestGenerateAndStoreSecret_CanBeUsedForHMACAuth(t *testing.T) {
 		ID:      brokerID,
 		Name:    "auth-test-host",
 		Slug:    "auth-test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}

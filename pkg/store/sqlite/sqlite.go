@@ -1063,7 +1063,7 @@ func (s *SQLiteStore) CreateRuntimeBroker(ctx context.Context, broker *store.Run
 			created_at, updated_at, created_by
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		broker.ID, broker.Name, broker.Slug, "", broker.Mode, broker.Version,
+		broker.ID, broker.Name, broker.Slug, "", "", broker.Version,
 		broker.Status, broker.ConnectionState, broker.LastHeartbeat,
 		marshalJSON(broker.Capabilities), "[]",
 		"{}", marshalJSON(broker.Profiles),
@@ -1082,7 +1082,7 @@ func (s *SQLiteStore) CreateRuntimeBroker(ctx context.Context, broker *store.Run
 func (s *SQLiteStore) GetRuntimeBroker(ctx context.Context, id string) (*store.RuntimeBroker, error) {
 	broker := &store.RuntimeBroker{}
 	var capabilities, profiles, labels, annotations string
-	var brokerType, harnesses, resources string // unused columns kept for schema compatibility
+	var brokerType, brokerMode, harnesses, resources string // unused columns kept for schema compatibility
 	var lastHeartbeat sql.NullTime
 	var createdBy sql.NullString
 
@@ -1094,7 +1094,7 @@ func (s *SQLiteStore) GetRuntimeBroker(ctx context.Context, id string) (*store.R
 			created_at, updated_at, created_by
 		FROM runtime_brokers WHERE id = ?
 	`, id).Scan(
-		&broker.ID, &broker.Name, &broker.Slug, &brokerType, &broker.Mode, &broker.Version,
+		&broker.ID, &broker.Name, &broker.Slug, &brokerType, &brokerMode, &broker.Version,
 		&broker.Status, &broker.ConnectionState, &lastHeartbeat,
 		&capabilities, &harnesses, &resources, &profiles,
 		&labels, &annotations, &broker.Endpoint,
@@ -1138,14 +1138,14 @@ func (s *SQLiteStore) UpdateRuntimeBroker(ctx context.Context, broker *store.Run
 
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE runtime_brokers SET
-			name = ?, slug = ?, type = ?, mode = ?, version = ?,
+			name = ?, slug = ?, type = ?, version = ?,
 			status = ?, connection_state = ?, last_heartbeat = ?,
 			capabilities = ?, supported_harnesses = ?, resources = ?, runtimes = ?,
 			labels = ?, annotations = ?, endpoint = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
-		broker.Name, broker.Slug, "", broker.Mode, broker.Version,
+		broker.Name, broker.Slug, "", broker.Version,
 		broker.Status, broker.ConnectionState, broker.LastHeartbeat,
 		marshalJSON(broker.Capabilities), "[]",
 		"{}", marshalJSON(broker.Profiles),
@@ -1190,10 +1190,6 @@ func (s *SQLiteStore) ListRuntimeBrokers(ctx context.Context, filter store.Runti
 		conditions = append(conditions, "status = ?")
 		args = append(args, filter.Status)
 	}
-	if filter.Mode != "" {
-		conditions = append(conditions, "mode = ?")
-		args = append(args, filter.Mode)
-	}
 	if filter.GroveID != "" {
 		conditions = append(conditions, "id IN (SELECT broker_id FROM grove_contributors WHERE grove_id = ?)")
 		args = append(args, filter.GroveID)
@@ -1235,12 +1231,12 @@ func (s *SQLiteStore) ListRuntimeBrokers(ctx context.Context, filter store.Runti
 	for rows.Next() {
 		var broker store.RuntimeBroker
 		var capabilities, profiles, labels, annotations string
-		var brokerType, harnesses, resources string // unused columns kept for schema compatibility
+		var brokerType, brokerMode, harnesses, resources string // unused columns kept for schema compatibility
 		var lastHeartbeat sql.NullTime
 		var createdBy sql.NullString
 
 		if err := rows.Scan(
-			&broker.ID, &broker.Name, &broker.Slug, &brokerType, &broker.Mode, &broker.Version,
+			&broker.ID, &broker.Name, &broker.Slug, &brokerType, &brokerMode, &broker.Version,
 			&broker.Status, &broker.ConnectionState, &lastHeartbeat,
 			&capabilities, &harnesses, &resources, &profiles,
 			&labels, &annotations, &broker.Endpoint,
@@ -1812,7 +1808,7 @@ func (s *SQLiteStore) AddGroveContributor(ctx context.Context, contrib *store.Gr
 		INSERT OR REPLACE INTO grove_contributors (grove_id, broker_id, broker_name, local_path, mode, status, profiles, last_seen, linked_by, linked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		contrib.GroveID, contrib.BrokerID, contrib.BrokerName, contrib.LocalPath, contrib.Mode, contrib.Status,
+		contrib.GroveID, contrib.BrokerID, contrib.BrokerName, contrib.LocalPath, "", contrib.Status,
 		"[]", contrib.LastSeen, // profiles column kept for schema compat but no longer used
 		nullableString(contrib.LinkedBy), nullableTime(contrib.LinkedAt),
 	)
@@ -1837,14 +1833,14 @@ func (s *SQLiteStore) RemoveGroveContributor(ctx context.Context, groveID, broke
 func (s *SQLiteStore) GetGroveContributor(ctx context.Context, groveID, brokerID string) (*store.GroveContributor, error) {
 	var contrib store.GroveContributor
 	var localPath, linkedBy sql.NullString
-	var profiles string // unused column kept for schema compat
+	var contribMode, profiles string // unused columns kept for schema compat
 	var lastSeen, linkedAt sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT grove_id, broker_id, broker_name, local_path, mode, status, profiles, last_seen, linked_by, linked_at
 		FROM grove_contributors WHERE grove_id = ? AND broker_id = ?
 	`, groveID, brokerID).Scan(
-		&contrib.GroveID, &contrib.BrokerID, &contrib.BrokerName, &localPath, &contrib.Mode, &contrib.Status,
+		&contrib.GroveID, &contrib.BrokerID, &contrib.BrokerName, &localPath, &contribMode, &contrib.Status,
 		&profiles, &lastSeen, &linkedBy, &linkedAt,
 	)
 	if err != nil {
@@ -1885,11 +1881,11 @@ func (s *SQLiteStore) GetGroveContributors(ctx context.Context, groveID string) 
 	for rows.Next() {
 		var contrib store.GroveContributor
 		var localPath, linkedBy sql.NullString
-		var profiles string // unused column kept for schema compat
+		var contribMode, profiles string // unused columns kept for schema compat
 		var lastSeen, linkedAt sql.NullTime
 
 		if err := rows.Scan(
-			&contrib.GroveID, &contrib.BrokerID, &contrib.BrokerName, &localPath, &contrib.Mode, &contrib.Status,
+			&contrib.GroveID, &contrib.BrokerID, &contrib.BrokerName, &localPath, &contribMode, &contrib.Status,
 			&profiles, &lastSeen, &linkedBy, &linkedAt,
 		); err != nil {
 			return nil, err
@@ -1929,11 +1925,11 @@ func (s *SQLiteStore) GetBrokerGroves(ctx context.Context, brokerID string) ([]s
 	for rows.Next() {
 		var contrib store.GroveContributor
 		var localPath, linkedBy sql.NullString
-		var profiles string // unused column kept for schema compat
+		var contribMode, profiles string // unused columns kept for schema compat
 		var lastSeen, linkedAt sql.NullTime
 
 		if err := rows.Scan(
-			&contrib.GroveID, &contrib.BrokerID, &contrib.BrokerName, &localPath, &contrib.Mode, &contrib.Status,
+			&contrib.GroveID, &contrib.BrokerID, &contrib.BrokerName, &localPath, &contribMode, &contrib.Status,
 			&profiles, &lastSeen, &linkedBy, &linkedAt,
 		); err != nil {
 			return nil, err

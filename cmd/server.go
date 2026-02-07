@@ -517,10 +517,9 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			Host:               cfg.RuntimeBroker.Host,
 			ReadTimeout:        cfg.RuntimeBroker.ReadTimeout,
 			WriteTimeout:       cfg.RuntimeBroker.WriteTimeout,
-			Mode:               cfg.RuntimeBroker.Mode,
 			HubEndpoint:        hubEndpointForRH,
-			BrokerID:             brokerID,
-			BrokerName:           brokerName,
+			BrokerID:           brokerID,
+			BrokerName:         brokerName,
 			CORSEnabled:        cfg.RuntimeBroker.CORSEnabled,
 			CORSAllowedOrigins: cfg.RuntimeBroker.CORSAllowedOrigins,
 			CORSAllowedMethods: cfg.RuntimeBroker.CORSAllowedMethods,
@@ -545,8 +544,8 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		// Create Runtime Broker server
 		rhSrv := runtimebroker.New(rhCfg, mgr, rt)
 
-		log.Printf("Starting Runtime Broker API server on %s:%d (mode: %s)",
-			cfg.RuntimeBroker.Host, cfg.RuntimeBroker.Port, cfg.RuntimeBroker.Mode)
+		log.Printf("Starting Runtime Broker API server on %s:%d",
+			cfg.RuntimeBroker.Host, cfg.RuntimeBroker.Port)
 
 		wg.Add(1)
 		go func() {
@@ -664,7 +663,6 @@ func registerGlobalGroveAndBroker(ctx context.Context, s store.Store, brokerID, 
 			ID:              brokerID,
 			Name:            brokerName,
 			Slug:            api.Slugify(brokerName),
-			Mode:            store.BrokerModeConnected,
 			Version:         "0.1.0",
 			Status:          store.BrokerStatusOnline,
 			ConnectionState: "connected",
@@ -710,13 +708,12 @@ func registerGlobalGroveAndBroker(ctx context.Context, s store.Store, brokerID, 
 
 	// Add runtime broker as contributor to global grove
 	contrib := &store.GroveContributor{
-		GroveID:   globalGrove.ID,
-		BrokerID:    brokerID,
-		BrokerName:  brokerName,
-		LocalPath: globalPath, // ~/.scion for the global grove
-		Mode:      store.BrokerModeConnected,
-		Status:    store.BrokerStatusOnline,
-		LastSeen:  time.Now(),
+		GroveID:    globalGrove.ID,
+		BrokerID:   brokerID,
+		BrokerName: brokerName,
+		LocalPath:  globalPath, // ~/.scion for the global grove
+		Status:     store.BrokerStatusOnline,
+		LastSeen:   time.Now(),
 	}
 
 	if err := s.AddGroveContributor(ctx, contrib); err != nil {

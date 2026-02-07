@@ -668,15 +668,14 @@ type CreateGroveRequest struct {
 }
 
 type RegisterGroveRequest struct {
-	ID        string            `json:"id,omitempty"` // Client-provided grove ID
-	Name      string            `json:"name"`
-	GitRemote string            `json:"gitRemote"`
-	Path      string            `json:"path,omitempty"`
-	BrokerID string            `json:"brokerId,omitempty"`   // Link to existing broker (two-phase flow)
-	Broker *RegisterBrokerInfo `json:"broker,omitempty"`     // DEPRECATED: Use BrokerID with two-phase registration
-	Profiles  []string          `json:"profiles,omitempty"`
-	Mode      string            `json:"mode,omitempty"`
-	Labels    map[string]string `json:"labels,omitempty"`
+	ID       string              `json:"id,omitempty"` // Client-provided grove ID
+	Name     string              `json:"name"`
+	GitRemote string              `json:"gitRemote"`
+	Path     string              `json:"path,omitempty"`
+	BrokerID string              `json:"brokerId,omitempty"` // Link to existing broker (two-phase flow)
+	Broker   *RegisterBrokerInfo `json:"broker,omitempty"`   // DEPRECATED: Use BrokerID with two-phase registration
+	Profiles []string            `json:"profiles,omitempty"`
+	Labels   map[string]string   `json:"labels,omitempty"`
 }
 
 type RegisterBrokerInfo struct {
@@ -697,9 +696,8 @@ type RegisterGroveResponse struct {
 
 // AddContributorRequest is the request for adding a broker as a grove contributor.
 type AddContributorRequest struct {
-	BrokerID string `json:"brokerId"`
+	BrokerID  string `json:"brokerId"`
 	LocalPath string `json:"localPath,omitempty"`
-	Mode      string `json:"mode,omitempty"` // "connected" or "read-only"
 }
 
 // AddContributorResponse is the response after adding a contributor.
@@ -897,12 +895,11 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 
 		// Add as grove contributor
 		contrib := &store.GroveContributor{
-			GroveID:   grove.ID,
-			BrokerID:    broker.ID,
-			BrokerName:  broker.Name,
-			LocalPath: req.Path,
-			Mode:      broker.Mode,
-			Status:    broker.Status,
+			GroveID:    grove.ID,
+			BrokerID:   broker.ID,
+			BrokerName: broker.Name,
+			LocalPath:  req.Path,
+			Status:     broker.Status,
 		}
 
 		if err := s.store.AddGroveContributor(ctx, contrib); err != nil {
@@ -957,10 +954,6 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 			broker.Capabilities = req.Broker.Capabilities
 			broker.Profiles = req.Broker.Profiles
 
-			if req.Mode != "" {
-				broker.Mode = req.Mode
-			}
-
 			if err := s.store.UpdateRuntimeBroker(ctx, broker); err != nil {
 				writeErrorFromErr(w, err, "")
 				return
@@ -975,16 +968,11 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 				ID:              brokerID,
 				Name:            req.Broker.Name,
 				Slug:            api.Slugify(req.Broker.Name),
-				Mode:            req.Mode,
 				Version:         req.Broker.Version,
 				Status:          store.BrokerStatusOnline,
 				ConnectionState: "connected",
 				Capabilities:    req.Broker.Capabilities,
 				Profiles:        req.Broker.Profiles,
-			}
-
-			if broker.Mode == "" {
-				broker.Mode = store.BrokerModeConnected
 			}
 
 			if err := s.store.CreateRuntimeBroker(ctx, broker); err != nil {
@@ -995,12 +983,11 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 
 		// Add as grove contributor
 		contrib := &store.GroveContributor{
-			GroveID:   grove.ID,
-			BrokerID:    broker.ID,
-			BrokerName:  broker.Name,
-			LocalPath: req.Path, // Filesystem path to the grove on this broker
-			Mode:      broker.Mode,
-			Status:    store.BrokerStatusOnline,
+			GroveID:    grove.ID,
+			BrokerID:   broker.ID,
+			BrokerName: broker.Name,
+			LocalPath:  req.Path, // Filesystem path to the grove on this broker
+			Status:     store.BrokerStatusOnline,
 		}
 
 		if err := s.store.AddGroveContributor(ctx, contrib); err != nil {
@@ -1659,7 +1646,6 @@ func (s *Server) listRuntimeBrokers(w http.ResponseWriter, r *http.Request) {
 	groveID := query.Get("groveId")
 	filter := store.RuntimeBrokerFilter{
 		Status:  query.Get("status"),
-		Mode:    query.Get("mode"),
 		GroveID: groveID,
 	}
 
@@ -2906,15 +2892,6 @@ func (s *Server) addGroveContributor(w http.ResponseWriter, r *http.Request, gro
 		return
 	}
 
-	// Determine mode
-	mode := req.Mode
-	if mode == "" {
-		mode = broker.Mode
-	}
-	if mode == "" {
-		mode = store.BrokerModeConnected
-	}
-
 	// Get the user who is performing this action
 	var linkedBy string
 	if user := GetUserIdentityFromContext(ctx); user != nil {
@@ -2927,7 +2904,6 @@ func (s *Server) addGroveContributor(w http.ResponseWriter, r *http.Request, gro
 		BrokerID:   broker.ID,
 		BrokerName: broker.Name,
 		LocalPath:  req.LocalPath,
-		Mode:       mode,
 		Status:     broker.Status,
 		LinkedBy:   linkedBy,
 	}

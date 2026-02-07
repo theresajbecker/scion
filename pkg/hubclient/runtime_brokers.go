@@ -44,7 +44,6 @@ type runtimeBrokerService struct {
 // ListBrokersOptions configures runtime broker list filtering.
 type ListBrokersOptions struct {
 	Status  string // Filter by status (online, offline)
-	Mode    string // Filter by mode (connected, read-only)
 	GroveID string // Filter by grove contribution
 	Page    apiclient.PageOptions
 }
@@ -141,9 +140,6 @@ func (s *runtimeBrokerService) List(ctx context.Context, opts *ListBrokersOption
 	if opts != nil {
 		if opts.Status != "" {
 			query.Set("status", opts.Status)
-		}
-		if opts.Mode != "" {
-			query.Set("mode", opts.Mode)
 		}
 		if opts.GroveID != "" {
 			query.Set("groveId", opts.GroveID)

@@ -625,7 +625,6 @@ func registerGrove(ctx context.Context, hubCtx *HubContext, groveName string, is
 		Name:      groveName,
 		GitRemote: util.NormalizeGitRemote(gitRemote),
 		Path:      hubCtx.GrovePath,
-		Mode:      "connected",
 		Broker: &hubclient.BrokerInfo{
 			ID:   hubCtx.BrokerID,
 			Name: brokerName,

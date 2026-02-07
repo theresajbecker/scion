@@ -84,7 +84,6 @@ type Grove struct {
 type GroveContributor struct {
 	BrokerID   string    `json:"brokerId"`
 	BrokerName string    `json:"brokerName"`
-	Mode       string    `json:"mode"`
 	Status     string    `json:"status"`
 	LastSeen   time.Time `json:"lastSeen,omitempty"`
 	LocalPath  string    `json:"localPath,omitempty"`
@@ -114,7 +113,6 @@ type RuntimeBroker struct {
 	ID              string              `json:"id"`
 	Name            string              `json:"name"`
 	Slug            string              `json:"slug"`
-	Mode            string              `json:"mode"`
 	Version         string              `json:"version"`
 	Status          string              `json:"status"`
 	ConnectionState string              `json:"connectionState"`
@@ -151,7 +149,6 @@ type BrokerGroveInfo struct {
 	GroveID    string `json:"groveId"`
 	GroveName  string `json:"groveName"`
 	GitRemote  string `json:"gitRemote,omitempty"`
-	Mode       string `json:"mode"`
 	AgentCount int    `json:"agentCount"`
 	LocalPath  string `json:"localPath,omitempty"`
 }

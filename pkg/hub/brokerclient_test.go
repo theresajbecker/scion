@@ -35,8 +35,7 @@ func TestAuthenticatedBrokerClient_CreateAgent(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host",
 		Slug:    "test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -150,8 +149,7 @@ func TestAuthenticatedBrokerClient_StartAgent(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host-2",
 		Slug:    "test-host-2",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -224,8 +222,7 @@ func TestAuthenticatedBrokerClient_MissingSecret(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host-no-secret",
 		Slug:    "test-host-no-secret",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -287,8 +284,7 @@ func TestAuthenticatedBrokerClient_ExpiredSecret(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host-expired",
 		Slug:    "test-host-expired",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -360,8 +356,7 @@ func TestAuthenticatedBrokerClient_AllOperations(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host-ops",
 		Slug:    "test-host-ops",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}

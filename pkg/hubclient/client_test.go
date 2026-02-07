@@ -261,7 +261,6 @@ func TestGrovesRegister(t *testing.T) {
 		Name:      "my-project",
 		GitRemote: "git@github.com:org/repo.git",
 		Path:      "/path/to/.scion",
-		Mode:      "connected",
 		Broker: &BrokerInfo{
 			Name:    "Dev Laptop",
 			Version: "1.0.0",

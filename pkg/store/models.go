@@ -119,7 +119,6 @@ type RuntimeBroker struct {
 	Slug string `json:"slug"` // URL-safe identifier
 
 	// Configuration
-	Mode    string `json:"mode"`    // connected, read-only
 	Version string `json:"version"` // Scion broker agent version
 
 	// Status
@@ -170,7 +169,6 @@ type GroveContributor struct {
 	BrokerID   string    `json:"brokerId"`
 	BrokerName string    `json:"brokerName"`
 	LocalPath  string    `json:"localPath,omitempty"` // Filesystem path to the grove on this broker (e.g., ~/.scion or /path/to/project/.scion)
-	Mode       string    `json:"mode"`                // connected, read-only
 	Status     string    `json:"status"`              // online, offline
 	LastSeen   time.Time `json:"lastSeen,omitempty"`
 
@@ -350,12 +348,6 @@ type BrokerJoinToken struct {
 	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy string    `json:"createdBy"` // User ID who created the token
 }
-
-// BrokerMode constants
-const (
-	BrokerModeConnected = "connected"
-	BrokerModeReadOnly  = "read-only"
-)
 
 // BrokerStatus constants
 const (

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
-	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/brokercredentials"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/runtime"
@@ -36,8 +35,6 @@ type ServerConfig struct {
 	// WriteTimeout is the maximum duration before timing out writes.
 	WriteTimeout time.Duration
 
-	// Mode is the operational mode (currently only "connected" is supported).
-	Mode string
 	// HubEndpoint is the Hub API endpoint for reporting (optional).
 	HubEndpoint string
 
@@ -107,12 +104,11 @@ type ServerConfig struct {
 // DefaultServerConfig returns the default server configuration.
 func DefaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Port:         9800,
-		Host:         "0.0.0.0",
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		Mode:         config.RuntimeBrokerModeConnected,
-		CORSEnabled:  true,
+		Port:               9800,
+		Host:               "0.0.0.0",
+		ReadTimeout:        30 * time.Second,
+		WriteTimeout:       120 * time.Second,
+		CORSEnabled:        true,
 		CORSAllowedOrigins: []string{"*"},
 		CORSAllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Broker-Token", "X-API-Key", "X-Scion-Broker-ID", "X-Scion-Timestamp", "X-Scion-Nonce", "X-Scion-Signature", "X-Scion-Signed-Headers"},
@@ -327,7 +323,6 @@ func (s *Server) Start(ctx context.Context) error {
 	slog.Info("Runtime Broker API server starting",
 		"host", s.config.Host,
 		"port", s.config.Port,
-		"mode", s.config.Mode,
 	)
 	if s.config.Debug {
 		slog.Debug("Broker details",

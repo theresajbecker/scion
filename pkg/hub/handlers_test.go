@@ -198,8 +198,7 @@ func TestAgentCreate(t *testing.T) {
 		ID:     "host_test123",
 		Slug:   "test-host",
 		Name:   "Test Host",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
 		t.Fatalf("failed to create runtime broker: %v", err)
@@ -224,8 +223,7 @@ func TestAgentCreate(t *testing.T) {
 		GroveID:  grove.ID,
 		BrokerID:   broker.ID,
 		BrokerName: broker.Name,
-		Mode:     broker.Mode,
-		Status:   store.BrokerStatusOnline,
+				Status:   store.BrokerStatusOnline,
 	}
 	if err := s.AddGroveContributor(ctx, contrib); err != nil {
 		t.Fatalf("failed to add grove contributor: %v", err)
@@ -279,8 +277,7 @@ func TestAgentCreate_SingleContributor(t *testing.T) {
 		ID:     "host_single",
 		Slug:   "single-host",
 		Name:   "Single Host",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
 		t.Fatalf("failed to create runtime broker: %v", err)
@@ -305,8 +302,7 @@ func TestAgentCreate_SingleContributor(t *testing.T) {
 		GroveID:  grove.ID,
 		BrokerID:   broker.ID,
 		BrokerName: broker.Name,
-		Mode:     broker.Mode,
-		Status:   store.BrokerStatusOnline,
+				Status:   store.BrokerStatusOnline,
 	}
 	if err := s.AddGroveContributor(ctx, contrib); err != nil {
 		t.Fatalf("failed to add grove contributor: %v", err)
@@ -346,8 +342,7 @@ func TestAgentCreate_MultipleContributors(t *testing.T) {
 		ID:     "host_multi1",
 		Slug:   "multi-host-1",
 		Name:   "Multi Host 1",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	if err := s.CreateRuntimeBroker(ctx, broker1); err != nil {
 		t.Fatalf("failed to create runtime broker 1: %v", err)
@@ -357,8 +352,7 @@ func TestAgentCreate_MultipleContributors(t *testing.T) {
 		ID:     "host_multi2",
 		Slug:   "multi-host-2",
 		Name:   "Multi Host 2",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	if err := s.CreateRuntimeBroker(ctx, broker2); err != nil {
 		t.Fatalf("failed to create runtime broker 2: %v", err)
@@ -380,22 +374,20 @@ func TestAgentCreate_MultipleContributors(t *testing.T) {
 
 	// Register both brokers as contributors to the grove
 	contrib1 := &store.GroveContributor{
-		GroveID:  grove.ID,
+		GroveID:    grove.ID,
 		BrokerID:   broker1.ID,
 		BrokerName: broker1.Name,
-		Mode:     broker1.Mode,
-		Status:   store.BrokerStatusOnline,
+		Status:     store.BrokerStatusOnline,
 	}
 	if err := s.AddGroveContributor(ctx, contrib1); err != nil {
 		t.Fatalf("failed to add grove contributor 1: %v", err)
 	}
 
 	contrib2 := &store.GroveContributor{
-		GroveID:  grove.ID,
+		GroveID:    grove.ID,
 		BrokerID:   broker2.ID,
 		BrokerName: broker2.Name,
-		Mode:     broker2.Mode,
-		Status:   store.BrokerStatusOnline,
+		Status:     store.BrokerStatusOnline,
 	}
 	if err := s.AddGroveContributor(ctx, contrib2); err != nil {
 		t.Fatalf("failed to add grove contributor 2: %v", err)
@@ -773,8 +765,7 @@ func TestGroveRegisterWithBrokerID(t *testing.T) {
 		ID:     "host_twophase_test",
 		Name:   "Two Phase Test Host",
 		Slug:   "two-phase-test-host",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
 		t.Fatalf("failed to create runtime broker: %v", err)
@@ -881,8 +872,7 @@ func TestAddContributor(t *testing.T) {
 		ID:     "host_contrib_test",
 		Name:   "Contributor Test Host",
 		Slug:   "contrib-test-host",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
 		t.Fatalf("failed to create runtime broker: %v", err)
@@ -946,8 +936,7 @@ func TestListContributors(t *testing.T) {
 		ID:     "host_list_contrib",
 		Name:   "List Contributors Host",
 		Slug:   "list-contrib-host",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
 		t.Fatalf("failed to create runtime broker: %v", err)
@@ -958,8 +947,7 @@ func TestListContributors(t *testing.T) {
 		BrokerID:    broker.ID,
 		BrokerName:  broker.Name,
 		LocalPath: "/test/path",
-		Mode:      store.BrokerModeConnected,
-		Status:    store.BrokerStatusOnline,
+				Status:    store.BrokerStatusOnline,
 	}
 	if err := s.AddGroveContributor(ctx, contrib); err != nil {
 		t.Fatalf("failed to add contributor: %v", err)
@@ -1029,8 +1017,7 @@ func TestRuntimeBrokerList(t *testing.T) {
 		ID:            "host_test1",
 		Name:          "Test Host",
 		Slug:          "test-host",
-		Mode:          store.BrokerModeConnected,
-		Status:        store.BrokerStatusOnline,
+				Status:        store.BrokerStatusOnline,
 		LastHeartbeat: time.Now(),
 		Created:       time.Now(),
 		Updated:       time.Now(),
@@ -1063,8 +1050,7 @@ func TestRuntimeBrokerGetByID(t *testing.T) {
 		ID:            "host_gettest",
 		Name:          "Get Test Host",
 		Slug:          "get-test-host",
-		Mode:          store.BrokerModeConnected,
-		Status:        store.BrokerStatusOnline,
+				Status:        store.BrokerStatusOnline,
 		LastHeartbeat: time.Now(),
 		Created:       time.Now(),
 		Updated:       time.Now(),
@@ -1111,8 +1097,7 @@ func TestRuntimeBrokerListWithGroveLocalPath(t *testing.T) {
 		ID:            "host_localpath_test",
 		Name:          "Local Path Test Host",
 		Slug:          "local-path-test-host",
-		Mode:          store.BrokerModeConnected,
-		Status:        store.BrokerStatusOnline,
+				Status:        store.BrokerStatusOnline,
 		LastHeartbeat: time.Now(),
 		Created:       time.Now(),
 		Updated:       time.Now(),
@@ -1127,8 +1112,7 @@ func TestRuntimeBrokerListWithGroveLocalPath(t *testing.T) {
 		BrokerID:    broker.ID,
 		BrokerName:  broker.Name,
 		LocalPath: "/path/to/project/.scion",
-		Mode:      store.BrokerModeConnected,
-		Status:    store.BrokerStatusOnline,
+				Status:    store.BrokerStatusOnline,
 	}
 	if err := s.AddGroveContributor(ctx, contrib); err != nil {
 		t.Fatalf("failed to add grove contributor: %v", err)

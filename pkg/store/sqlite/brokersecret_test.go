@@ -21,8 +21,7 @@ func TestBrokerSecretCRUD(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host",
 		Slug:    "test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -139,8 +138,7 @@ func TestBrokerJoinTokenCRUD(t *testing.T) {
 		ID:      brokerID,
 		Name:    "test-host-for-token",
 		Slug:    "test-host-for-token",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOffline,
+				Status:  store.BrokerStatusOffline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}
@@ -222,8 +220,7 @@ func TestCleanExpiredJoinTokens(t *testing.T) {
 			ID:      id,
 			Name:    "test-host-" + string(rune('a'+i)),
 			Slug:    "test-host-" + string(rune('a'+i)),
-			Mode:    store.BrokerModeConnected,
-			Status:  store.BrokerStatusOffline,
+						Status:  store.BrokerStatusOffline,
 			Created: time.Now(),
 			Updated: time.Now(),
 		}
@@ -281,8 +278,7 @@ func TestBrokerSecretCascadeDelete(t *testing.T) {
 		ID:      brokerID,
 		Name:    "cascade-test-host",
 		Slug:    "cascade-test-host",
-		Mode:    store.BrokerModeConnected,
-		Status:  store.BrokerStatusOnline,
+				Status:  store.BrokerStatusOnline,
 		Created: time.Now(),
 		Updated: time.Now(),
 	}

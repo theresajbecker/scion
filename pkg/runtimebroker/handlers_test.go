@@ -99,10 +99,6 @@ func TestHealthz(t *testing.T) {
 	if resp.Status != "healthy" {
 		t.Errorf("expected status 'healthy', got '%s'", resp.Status)
 	}
-
-	if resp.Mode != "connected" {
-		t.Errorf("expected mode 'connected', got '%s'", resp.Mode)
-	}
 }
 
 func TestReadyz(t *testing.T) {
@@ -137,10 +133,6 @@ func TestHostInfo(t *testing.T) {
 
 	if resp.BrokerID != "test-broker-id" {
 		t.Errorf("expected brokerId 'test-broker-id', got '%s'", resp.BrokerID)
-	}
-
-	if resp.Mode != "connected" {
-		t.Errorf("expected mode 'connected', got '%s'", resp.Mode)
 	}
 
 	if resp.Capabilities == nil {

@@ -21,9 +21,8 @@ import (
 )
 
 var (
-	hubRegisterMode   string
-	hubForceRegister  bool
-	hubOutputJSON     bool
+	hubForceRegister    bool
+	hubOutputJSON       bool
 	hubDeregisterBroker bool
 )
 
@@ -195,7 +194,6 @@ func init() {
 	hubCmd.AddCommand(hubUnlinkCmd)
 
 	// Register flags
-	hubRegisterCmd.Flags().StringVar(&hubRegisterMode, "mode", "connected", "Registration mode (connected, read-only)")
 	hubRegisterCmd.Flags().BoolVar(&hubForceRegister, "force", false, "Force re-registration even if already registered")
 
 	// Deregister flags
@@ -839,7 +837,6 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 			Name:     groveName,
 			Path:     resolvedPath,
 			BrokerID: brokerID,
-			Mode:     hubRegisterMode,
 		}
 		if !isGlobal {
 			req.GitRemote = util.NormalizeGitRemote(util.GetGitRemote())
@@ -1050,14 +1047,14 @@ func runHubBrokers(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-36s  %-20s  %-10s  %-15s  %s\n", "ID", "NAME", "STATUS", "LAST SEEN", "MODE")
-	fmt.Printf("%-36s  %-20s  %-10s  %-15s  %s\n", "------------------------------------", "--------------------", "----------", "---------------", "----------")
+	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "ID", "NAME", "STATUS", "LAST SEEN")
+	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "------------------------------------", "--------------------", "----------", "---------------")
 	for _, h := range resp.Brokers {
 		lastSeen := "-"
 		if !h.LastHeartbeat.IsZero() {
 			lastSeen = formatRelativeTime(h.LastHeartbeat)
 		}
-		fmt.Printf("%-36s  %-20s  %-10s  %-15s  %s\n", h.ID, truncate(h.Name, 20), h.Status, lastSeen, h.Mode)
+		fmt.Printf("%-36s  %-20s  %-10s  %s\n", h.ID, truncate(h.Name, 20), h.Status, lastSeen)
 	}
 
 	return nil
@@ -1355,7 +1352,6 @@ func registerGroveOnHub(ctx context.Context, client hubclient.Client, groveID, g
 		Name:      groveName,
 		GitRemote: util.NormalizeGitRemote(gitRemote),
 		Path:      grovePath,
-		Mode:      "connected",
 	}
 
 	resp, err := client.Groves().Register(ctx, req)

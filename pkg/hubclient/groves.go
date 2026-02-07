@@ -76,15 +76,14 @@ type ListGrovesResponse struct {
 
 // RegisterGroveRequest is the request for registering a grove.
 type RegisterGroveRequest struct {
-	ID        string            `json:"id,omitempty"`      // Client-provided grove ID (from grove_id setting)
-	Name      string            `json:"name"`
+	ID       string            `json:"id,omitempty"` // Client-provided grove ID (from grove_id setting)
+	Name     string            `json:"name"`
 	GitRemote string            `json:"gitRemote"`
-	Path      string            `json:"path,omitempty"`
-	BrokerID string            `json:"brokerId,omitempty"`  // Link to existing broker (two-phase flow)
-	Broker    *BrokerInfo         `json:"broker,omitempty"`    // DEPRECATED: Use BrokerID with two-phase registration
-	Profiles  []string          `json:"profiles,omitempty"`
-	Mode      string            `json:"mode,omitempty"`    // connected, read-only
-	Labels    map[string]string `json:"labels,omitempty"`
+	Path     string            `json:"path,omitempty"`
+	BrokerID string            `json:"brokerId,omitempty"` // Link to existing broker (two-phase flow)
+	Broker   *BrokerInfo       `json:"broker,omitempty"`   // DEPRECATED: Use BrokerID with two-phase registration
+	Profiles []string          `json:"profiles,omitempty"`
+	Labels   map[string]string `json:"labels,omitempty"`
 }
 
 // BrokerInfo describes the registering broker.
@@ -128,9 +127,8 @@ type ListContributorsResponse struct {
 
 // AddContributorRequest is the request for adding a broker as a grove contributor.
 type AddContributorRequest struct {
-	BrokerID string `json:"brokerId"`
+	BrokerID  string `json:"brokerId"`
 	LocalPath string `json:"localPath,omitempty"`
-	Mode      string `json:"mode,omitempty"` // "connected" or "read-only"
 }
 
 // AddContributorResponse is the response after adding a contributor.

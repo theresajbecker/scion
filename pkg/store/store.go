@@ -190,7 +190,6 @@ type RuntimeBrokerStore interface {
 // RuntimeBrokerFilter defines criteria for filtering runtime brokers.
 type RuntimeBrokerFilter struct {
 	Status  string
-	Mode    string
 	GroveID string
 }
 

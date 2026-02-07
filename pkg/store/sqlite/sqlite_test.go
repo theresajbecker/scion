@@ -343,8 +343,7 @@ func TestRuntimeBrokerLookupByName(t *testing.T) {
 		ID:     api.NewUUID(),
 		Name:   "My-Laptop",
 		Slug:   "my-laptop",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
 
@@ -381,8 +380,7 @@ func TestRuntimeBrokerCRUD(t *testing.T) {
 		ID:      api.NewUUID(),
 		Name:    "Dev Laptop",
 		Slug:    "dev-laptop",
-		Mode:    store.BrokerModeConnected,
-		Version: "1.0.0",
+				Version: "1.0.0",
 		Status:  store.BrokerStatusOnline,
 		Capabilities: &store.BrokerCapabilities{
 			WebPTY: true,
@@ -446,8 +444,7 @@ func TestRuntimeBrokerList(t *testing.T) {
 			ID:     api.NewUUID(),
 			Name:   "Host " + string(rune('A'+i)),
 			Slug:   "host-" + string(rune('a'+i)),
-			Mode:   store.BrokerModeConnected,
-			Status: store.BrokerStatusOnline,
+						Status: store.BrokerStatusOnline,
 			Profiles: []store.BrokerProfile{
 				{Name: "default", Type: "docker", Available: true},
 			},
@@ -675,8 +672,7 @@ func TestGroveContributors(t *testing.T) {
 		ID:     api.NewUUID(),
 		Name:   "Host 1",
 		Slug:   "host-1",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 		Profiles: []store.BrokerProfile{
 			{Name: "docker", Type: "docker", Available: true},
 			{Name: "dev", Type: "docker", Available: true},
@@ -688,8 +684,7 @@ func TestGroveContributors(t *testing.T) {
 		ID:     api.NewUUID(),
 		Name:   "Host 2",
 		Slug:   "host-2",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 		Profiles: []store.BrokerProfile{
 			{Name: "k8s-prod", Type: "kubernetes", Available: true},
 		},
@@ -701,18 +696,16 @@ func TestGroveContributors(t *testing.T) {
 		GroveID:    grove.ID,
 		BrokerID:   broker1.ID,
 		BrokerName: broker1.Name,
-		Mode:       store.BrokerModeConnected,
 		Status:     store.BrokerStatusOnline,
 		LinkedBy:   "user-123",
 	}
 	require.NoError(t, s.AddGroveContributor(ctx, contrib1))
 
 	contrib2 := &store.GroveContributor{
-		GroveID:  grove.ID,
+		GroveID:    grove.ID,
 		BrokerID:   broker2.ID,
 		BrokerName: broker2.Name,
-		Mode:     store.BrokerModeReadOnly,
-		Status:   store.BrokerStatusOnline,
+		Status:     store.BrokerStatusOnline,
 	}
 	require.NoError(t, s.AddGroveContributor(ctx, contrib2))
 

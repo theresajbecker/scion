@@ -15,20 +15,18 @@ import (
 type HealthResponse struct {
 	Status  string            `json:"status"`
 	Version string            `json:"version"`
-	Mode    string            `json:"mode,omitempty"`
 	Uptime  string            `json:"uptime"`
 	Checks  map[string]string `json:"checks,omitempty"`
 }
 
 // BrokerInfoResponse is the response for the /api/v1/info endpoint.
 type BrokerInfoResponse struct {
-	BrokerID string            `json:"brokerId"`
-	Name         string            `json:"name,omitempty"`
-	Version      string            `json:"version"`
-	Mode         string            `json:"mode"`
+	BrokerID     string              `json:"brokerId"`
+	Name         string              `json:"name,omitempty"`
+	Version      string              `json:"version"`
 	Capabilities *BrokerCapabilities `json:"capabilities,omitempty"`
 	Profiles     []BrokerProfile     `json:"profiles,omitempty"`
-	Groves       []GroveInfo       `json:"groves,omitempty"`
+	Groves       []GroveInfo         `json:"groves,omitempty"`
 }
 
 // BrokerProfile describes a runtime profile available on a broker.

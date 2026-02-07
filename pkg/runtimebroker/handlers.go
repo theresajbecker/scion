@@ -42,7 +42,6 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	resp := HealthResponse{
 		Status:  status,
 		Version: s.version,
-		Mode:    s.config.Mode,
 		Uptime:  time.Since(s.startTime).Round(time.Second).String(),
 		Checks:  checks,
 	}
@@ -82,10 +81,9 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := BrokerInfoResponse{
-		BrokerID:  s.config.BrokerID,
-		Name:    s.config.BrokerName,
-		Version: s.version,
-		Mode:    s.config.Mode,
+		BrokerID: s.config.BrokerID,
+		Name:     s.config.BrokerName,
+		Version:  s.version,
 		Capabilities: &BrokerCapabilities{
 			WebPTY: false, // TODO: Implement WebSocket PTY
 			Sync:   true,

@@ -23,8 +23,7 @@ func TestAgentCreate_BrokerResolution(t *testing.T) {
 		ID:     "broker_id_123",
 		Name:   "My Laptop",
 		Slug:   "my-laptop",
-		Mode:   store.BrokerModeConnected,
-		Status: store.BrokerStatusOnline,
+				Status: store.BrokerStatusOnline,
 	}
 	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
 
@@ -43,8 +42,7 @@ func TestAgentCreate_BrokerResolution(t *testing.T) {
 		GroveID:  grove.ID,
 		BrokerID:   broker.ID,
 		BrokerName: broker.Name,
-		Mode:     broker.Mode,
-		Status:   store.BrokerStatusOnline,
+				Status:   store.BrokerStatusOnline,
 	}
 	require.NoError(t, s.AddGroveContributor(ctx, contrib))
 
