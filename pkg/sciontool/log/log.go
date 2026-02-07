@@ -5,7 +5,9 @@ Copyright 2025 The Scion Authors.
 package log
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -14,9 +16,9 @@ import (
 )
 
 var (
-	logPath  string
-	debug    bool
-	mu       sync.Mutex
+	logPath     string
+	debug       bool
+	mu          sync.Mutex
 	initialized bool
 )
 
@@ -25,22 +27,51 @@ func Init() {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if initialized && logPath != "" {
-		return
-	}
-
+	// If already initialized, we might still want to re-init slog if logPath changed
+	// but for now let's just allow re-setting slog default to our handler
+	
 	if logPath == "" {
-		home := os.Getenv("HOME")
-		if home == "" {
-			home = "/home/scion"
+		// Priority 1: Check if /home/scion exists (standard agent home)
+		if _, err := os.Stat("/home/scion"); err == nil {
+			logPath = "/home/scion/agent.log"
+		} else {
+			// Priority 2: Use HOME env var
+			home := os.Getenv("HOME")
+			if home == "" {
+				home = "/home/scion"
+			}
+			logPath = filepath.Join(home, "agent.log")
 		}
-		logPath = filepath.Join(home, "agent.log")
 	}
 
 	if os.Getenv("SCION_DEBUG") != "" {
 		debug = true
 	}
+
+	// Set as default slog handler to capture all debug lines from shared packages
+	slog.SetDefault(slog.New(newHandler()))
+
 	initialized = true
+}
+
+// SetDebug enables or disables debug logging.
+func SetDebug(enabled bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	debug = enabled
+}
+
+// Chown changes the ownership of the log file.
+func Chown(uid, gid int) error {
+	mu.Lock()
+	defer mu.Unlock()
+	if logPath == "" {
+		return nil
+	}
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		return nil
+	}
+	return os.Chown(logPath, uid, gid)
 }
 
 // SetLogPath sets the path to the log file. Primarily for testing.
@@ -98,8 +129,9 @@ func write(level, tag, format string, args ...interface{}) {
 
 	// Write to agent.log
 	mu.Lock()
-	defer mu.Unlock()
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Use more permissive 0666 so that if created as root, it can be written to by others
+	// (subject to directory permissions and umask).
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		// If we can't write to agent.log, try to fall back to /tmp and enable debug
 		if logPath != "/tmp/agent.log" {
@@ -121,19 +153,64 @@ func write(level, tag, format string, args ...interface{}) {
 			fmt.Fprint(os.Stderr, fallbackMsg)
 
 			// Retry with new path
-			f, err = os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			f, err = os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 			if err != nil {
 				// Total failure
+				mu.Unlock()
 				return
 			}
 			// Write the fallback message to the new log file too
 			f.WriteString(timestamp + " " + fallbackMsg)
 		} else {
 			// Already at /tmp/agent.log and it failed
+			mu.Unlock()
 			return
 		}
 	}
-	defer f.Close()
-
 	f.WriteString(fileEntry)
+	f.Close()
+	mu.Unlock()
+}
+
+// slogHandler implements slog.Handler by bridging to our write function.
+type slogHandler struct {
+	attrs []slog.Attr
+}
+
+func newHandler() *slogHandler {
+	return &slogHandler{}
+}
+
+func (h *slogHandler) Enabled(_ context.Context, level slog.Level) bool {
+	if level >= slog.LevelError {
+		return true
+	}
+	if level >= slog.LevelInfo {
+		return true
+	}
+	if level >= slog.LevelDebug {
+		mu.Lock()
+		d := debug
+		mu.Unlock()
+		return d
+	}
+	return false
+}
+
+func (h *slogHandler) Handle(_ context.Context, r slog.Record) error {
+	level := r.Level.String()
+	msg := r.Message
+	// In a real implementation we might want to include attributes,
+	// but for sciontool we keep it simple for now.
+	write(level, "slog", "%s", msg)
+	return nil
+}
+
+func (h *slogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &slogHandler{attrs: append(h.attrs, attrs...)}
+}
+
+func (h *slogHandler) WithGroup(name string) slog.Handler {
+	// Not implemented
+	return h
 }

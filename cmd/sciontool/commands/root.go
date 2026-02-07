@@ -31,6 +31,11 @@ Commands:
   daemon    Run hub communication daemon (future)`,
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if logLevel == "debug" {
+			log.SetDebug(true)
+		}
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

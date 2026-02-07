@@ -91,6 +91,13 @@ func runInit(args []string) int {
 	// Set up scion user UID/GID to match host user
 	targetUID, targetGID := setupHostUser()
 
+	// Chown the log file so the scion user can write to it even if it was created by root
+	if targetUID != 0 {
+		if err := log.Chown(targetUID, targetGID); err != nil {
+			log.Error("Failed to chown log file: %v", err)
+		}
+	}
+
 	// Start telemetry pipeline if configured
 	var telemetryPipeline *telemetry.Pipeline
 	if pipeline := telemetry.New(); pipeline != nil {

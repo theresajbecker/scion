@@ -90,7 +90,7 @@ func runStatusAskUser(message string) {
 		}
 	}
 
-	fmt.Printf("Agent asked: %s\n", message)
+	log.Info("Agent asked: %s", message)
 }
 
 // runStatusTaskCompleted updates status to completed.
@@ -118,5 +118,5 @@ func runStatusTaskCompleted(message string) {
 		}
 	}
 
-	fmt.Printf("Agent completed: %s\n", message)
+	log.Info("Agent completed: %s", message)
 }
