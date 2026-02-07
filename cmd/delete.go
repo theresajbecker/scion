@@ -18,10 +18,10 @@ var deleteStopped bool
 
 // deleteCmd represents the delete command
 var deleteCmd = &cobra.Command{
-	Use:               "delete <agent>",
+	Use:               "delete <agent> [agent...]",
 	Aliases:           []string{"rm"},
-	Short:             "Delete an agent",
-	Long:              `Stop and remove an agent container and its associated files and worktree.`,
+	Short:             "Delete one or more agents",
+	Long:              `Stop and remove one or more agent containers and their associated files and worktrees.`,
 	ValidArgsFunction: getAgentNames,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if deleteStopped {
@@ -30,8 +30,8 @@ var deleteCmd = &cobra.Command{
 			}
 			return nil
 		}
-		if len(args) != 1 {
-			return fmt.Errorf("requires exactly 1 argument (agent name)")
+		if len(args) < 1 {
+			return fmt.Errorf("requires at least 1 argument (agent name)")
 		}
 		return nil
 	},
@@ -42,7 +42,7 @@ var deleteCmd = &cobra.Command{
 		}
 
 		// For delete with --stopped, we can't specify a target agent
-		// For single agent delete, we pass the target agent name to exclude it from sync requirements
+		// For multi-agent delete, pass the first agent name to exclude from sync requirements
 		var targetAgent string
 		if !deleteStopped && len(args) > 0 {
 			targetAgent = args[0]
@@ -108,71 +108,92 @@ var deleteCmd = &cobra.Command{
 			return nil
 		}
 
-		agentName := args[0]
-
 		// Use Hub if available
 		if hubCtx != nil {
-			return deleteAgentViaHub(hubCtx, agentName)
+			return deleteAgentsViaHub(hubCtx, args)
 		}
 
-		// Local mode
-		effectiveProfile := profile
-		if effectiveProfile == "" {
-			effectiveProfile = agent.GetSavedRuntime(agentName, grovePath)
-		}
-
-		rt := runtime.GetRuntime(grovePath, effectiveProfile)
-		mgr := agent.NewManager(rt)
-
-		fmt.Printf("Deleting agent '%s'...\n", agentName)
-
-		// We check if it exists in List to provide better feedback
-		agents, _ := mgr.List(context.Background(), map[string]string{"scion.name": agentName})
-		containerFound := false
-		for _, a := range agents {
-			if a.Name == agentName || a.ID == agentName || strings.TrimPrefix(a.Name, "/") == agentName {
-				containerFound = true
-				break
+		// Local mode - delete each agent
+		var errors []string
+		for _, agentName := range args {
+			if err := deleteAgentLocal(agentName); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %v", agentName, err))
 			}
 		}
 
-		if !containerFound {
-			fmt.Println("No container found, removing agent definition...")
+		if len(errors) > 0 {
+			return fmt.Errorf("failed to delete some agents:\n  %s", strings.Join(errors, "\n  "))
 		}
-
-		branchDeleted, err := mgr.Delete(context.Background(), agentName, true, grovePath, !preserveBranch)
-		if err != nil {
-			return err
-		}
-
-		if branchDeleted {
-			fmt.Printf("Git branch associated with agent '%s' deleted.\n", agentName)
-		}
-
-		fmt.Printf("Agent '%s' deleted.\n", agentName)
 		return nil
 	},
 }
 
-func deleteAgentViaHub(hubCtx *HubContext, agentName string) error {
+func deleteAgentsViaHub(hubCtx *HubContext, agentNames []string) error {
 	PrintUsingHub(hubCtx.Endpoint)
-
-	fmt.Printf("Deleting agent '%s'...\n", agentName)
 
 	opts := &hubclient.DeleteAgentOptions{
 		DeleteFiles:  true,
 		RemoveBranch: !preserveBranch,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	var errors []string
+	for _, agentName := range agentNames {
+		fmt.Printf("Deleting agent '%s'...\n", agentName)
 
-	// Use grove-scoped client which supports agent lookup by name/slug
-	if err := hubCtx.Client.GroveAgents(hubCtx.GroveID).Delete(ctx, agentName, opts); err != nil {
-		return wrapHubError(fmt.Errorf("failed to delete agent via Hub: %w", err))
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+
+		// Use grove-scoped client which supports agent lookup by name/slug
+		if err := hubCtx.Client.GroveAgents(hubCtx.GroveID).Delete(ctx, agentName, opts); err != nil {
+			cancel()
+			errors = append(errors, fmt.Sprintf("%s: %v", agentName, wrapHubError(err)))
+			continue
+		}
+		cancel()
+
+		fmt.Printf("Agent '%s' deleted via Hub.\n", agentName)
 	}
 
-	fmt.Printf("Agent '%s' deleted via Hub.\n", agentName)
+	if len(errors) > 0 {
+		return fmt.Errorf("failed to delete some agents via Hub:\n  %s", strings.Join(errors, "\n  "))
+	}
+	return nil
+}
+
+func deleteAgentLocal(agentName string) error {
+	effectiveProfile := profile
+	if effectiveProfile == "" {
+		effectiveProfile = agent.GetSavedRuntime(agentName, grovePath)
+	}
+
+	rt := runtime.GetRuntime(grovePath, effectiveProfile)
+	mgr := agent.NewManager(rt)
+
+	fmt.Printf("Deleting agent '%s'...\n", agentName)
+
+	// We check if it exists in List to provide better feedback
+	agents, _ := mgr.List(context.Background(), map[string]string{"scion.name": agentName})
+	containerFound := false
+	for _, a := range agents {
+		if a.Name == agentName || a.ID == agentName || strings.TrimPrefix(a.Name, "/") == agentName {
+			containerFound = true
+			break
+		}
+	}
+
+	if !containerFound {
+		fmt.Println("No container found, removing agent definition...")
+	}
+
+	branchDeleted, err := mgr.Delete(context.Background(), agentName, true, grovePath, !preserveBranch)
+	if err != nil {
+		return err
+	}
+
+	if branchDeleted {
+		fmt.Printf("Git branch associated with agent '%s' deleted.\n", agentName)
+	}
+
+	fmt.Printf("Agent '%s' deleted.\n", agentName)
 	return nil
 }
 
