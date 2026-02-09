@@ -183,9 +183,13 @@ func (s *LocalPTYSession) Run() error {
 
 // startDockerExec starts a docker exec session with tmux attach using a real PTY.
 func (s *LocalPTYSession) startDockerExec() error {
-	// Note: We don't use -t flag since pty.Start allocates the PTY for us
+	// We need BOTH:
+	// 1. -it flags: tell Docker to allocate a TTY inside the container
+	// 2. pty.StartWithSize: allocate a PTY on the broker side for proper terminal handling
+	// The broker-side PTY handles I/O with the websocket, while the container-side TTY
+	// is required for tmux to function properly inside the container.
 	args := []string{
-		"exec", "-i",
+		"exec", "-it",
 		"--user", "scion",
 		s.containerID,
 		"tmux", "attach-session", "-t", "scion",
@@ -358,9 +362,13 @@ func (h *StreamPTYHandler) startDockerExec() error {
 		runtimeCmd = "docker"
 	}
 
-	// Note: We don't use -t flag since pty.Start allocates the PTY for us
+	// We need BOTH:
+	// 1. -it flags: tell the container runtime to allocate a TTY inside the container
+	// 2. pty.StartWithSize: allocate a PTY on the broker side for proper terminal handling
+	// The broker-side PTY handles I/O with the websocket, while the container-side TTY
+	// is required for tmux to function properly inside the container.
 	args := []string{
-		"exec", "-i",
+		"exec", "-it",
 		"--user", "scion",
 		h.containerID,
 		"tmux", "attach-session", "-t", "scion",
