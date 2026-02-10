@@ -388,7 +388,7 @@ func handleUnlinkedGrovePrompt(cmd *cobra.Command, args []string) bool {
 	}
 }
 
-// isGroveLinkedToHub checks if a grove is registered on the Hub.
+// isGroveLinkedToHub checks if a grove is linked to the Hub.
 func isGroveLinkedToHub(ctx context.Context, client hubclient.Client, groveID string) (bool, error) {
 	if groveID == "" {
 		return false, nil

@@ -78,17 +78,17 @@ func ShowSyncPlan(result *SyncResult, autoConfirm bool) bool {
 	return ConfirmAction("Proceed with sync?", true, autoConfirm)
 }
 
-// ShowRegistrationPrompt displays the grove registration prompt.
+// ShowLinkPrompt displays the grove link prompt.
 // Returns true if the user confirms, false otherwise.
-func ShowRegistrationPrompt(groveName string, autoConfirm bool) bool {
+func ShowLinkPrompt(groveName string, autoConfirm bool) bool {
 	fmt.Println()
-	fmt.Printf("Grove '%s' is not registered with the Hub.\n", groveName)
-	return ConfirmAction("Register grove with Hub?", true, autoConfirm)
+	fmt.Printf("Grove '%s' is not linked to the Hub.\n", groveName)
+	return ConfirmAction("Link grove with Hub?", true, autoConfirm)
 }
 
-// ShowInitRegistrationPrompt displays the post-init registration prompt.
+// ShowInitLinkPrompt displays the post-init link prompt.
 // Returns true if the user confirms, false otherwise.
-func ShowInitRegistrationPrompt(autoConfirm bool) bool {
+func ShowInitLinkPrompt(autoConfirm bool) bool {
 	return ConfirmAction("Grove initialized. Link to Hub?", true, autoConfirm)
 }
 

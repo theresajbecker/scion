@@ -142,7 +142,7 @@ func promptHubRegistration(isGlobal bool) error {
 	}
 
 	// Step 1: Prompt to link grove to Hub
-	if !hubsync.ShowInitRegistrationPrompt(autoConfirm) {
+	if !hubsync.ShowInitLinkPrompt(autoConfirm) {
 		return nil
 	}
 

@@ -258,8 +258,8 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 			}
 		} else {
 			// No matching groves - ask for confirmation
-			if !ShowRegistrationPrompt(groveName, opts.AutoConfirm) {
-				return nil, fmt.Errorf("grove must be registered with Hub to perform this operation\n\n" +
+			if !ShowLinkPrompt(groveName, opts.AutoConfirm) {
+				return nil, fmt.Errorf("grove must be linked to Hub to perform this operation\n\n" +
 					"Link this grove: scion hub link\n" +
 					"Or use local-only mode: scion --no-hub <command>")
 			}
@@ -313,12 +313,12 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 				fmt.Println("Warning: No runtime brokers are available for this grove.")
 				fmt.Println("Agent sync cannot be performed without an online broker.")
 				fmt.Println()
-				fmt.Println("Local agents not registered on Hub:")
+				fmt.Println("Local agents not synced to Hub:")
 				for _, name := range effectiveSyncResult.ToRegister {
 					fmt.Printf("  + %s\n", name)
 				}
 				fmt.Println()
-				fmt.Println("To register agents, ensure a runtime broker is running and connected.")
+				fmt.Println("To sync agents, ensure a runtime broker is running and connected.")
 				fmt.Println()
 				// Continue without syncing - this allows read operations like list to proceed
 				return hubCtx, nil

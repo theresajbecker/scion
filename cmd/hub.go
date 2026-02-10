@@ -576,53 +576,53 @@ func printGroveContext(client hubclient.Client, grovePath string, isGlobal bool,
 		}
 	}
 
-	// Check if grove is registered on the Hub
+	// Check if grove is linked to the Hub
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var registeredGrove *hubclient.Grove
+	var linkedGrove *hubclient.Grove
 
 	// First try to find by grove_id if we have one
 	if settings.GroveID != "" {
 		grove, err := client.Groves().Get(ctx, settings.GroveID)
 		if err == nil {
-			registeredGrove = grove
+			linkedGrove = grove
 		}
 	}
 
 	// If not found by ID and we have a git remote, try by git remote
-	if registeredGrove == nil && gitRemote != "" {
+	if linkedGrove == nil && gitRemote != "" {
 		resp, err := client.Groves().List(ctx, &hubclient.ListGrovesOptions{
 			GitRemote: util.NormalizeGitRemote(gitRemote),
 		})
 		if err == nil && len(resp.Groves) > 0 {
-			registeredGrove = &resp.Groves[0]
+			linkedGrove = &resp.Groves[0]
 		}
 	}
 
 	// If still not found and global, try by name
-	if registeredGrove == nil && isGlobal {
+	if linkedGrove == nil && isGlobal {
 		resp, err := client.Groves().List(ctx, &hubclient.ListGrovesOptions{
 			Name: "global",
 		})
 		if err == nil && len(resp.Groves) > 0 {
-			registeredGrove = &resp.Groves[0]
+			linkedGrove = &resp.Groves[0]
 		}
 	}
 
-	if registeredGrove == nil {
-		fmt.Printf("Registered: no\n")
+	if linkedGrove == nil {
+		fmt.Printf("Linked: no\n")
 		fmt.Println()
 		fmt.Println("Run 'scion hub link' to link this grove with the Hub.")
 		return
 	}
 
-	fmt.Printf("Registered: yes\n")
-	fmt.Printf("Hub Grove:  %s (ID: %s)\n", registeredGrove.Name, registeredGrove.ID)
+	fmt.Printf("Linked: yes\n")
+	fmt.Printf("Hub Grove:  %s (ID: %s)\n", linkedGrove.Name, linkedGrove.ID)
 
 	// Get runtime brokers for this grove
 	brokersResp, err := client.RuntimeBrokers().List(ctx, &hubclient.ListBrokersOptions{
-		GroveID: registeredGrove.ID,
+		GroveID: linkedGrove.ID,
 	})
 	if err != nil {
 		fmt.Printf("Brokers:    (error fetching: %s)\n", err)
@@ -681,52 +681,52 @@ func getGroveContextJSON(client hubclient.Client, grovePath string, isGlobal boo
 		}
 	}
 
-	// Check if grove is registered on the Hub
+	// Check if grove is linked to the Hub
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var registeredGrove *hubclient.Grove
+	var linkedGrove *hubclient.Grove
 
 	// First try to find by grove_id if we have one
 	if settings.GroveID != "" {
 		grove, err := client.Groves().Get(ctx, settings.GroveID)
 		if err == nil {
-			registeredGrove = grove
+			linkedGrove = grove
 		}
 	}
 
 	// If not found by ID and we have a git remote, try by git remote
-	if registeredGrove == nil && gitRemote != "" {
+	if linkedGrove == nil && gitRemote != "" {
 		resp, err := client.Groves().List(ctx, &hubclient.ListGrovesOptions{
 			GitRemote: util.NormalizeGitRemote(gitRemote),
 		})
 		if err == nil && len(resp.Groves) > 0 {
-			registeredGrove = &resp.Groves[0]
+			linkedGrove = &resp.Groves[0]
 		}
 	}
 
 	// If still not found and global, try by name
-	if registeredGrove == nil && isGlobal {
+	if linkedGrove == nil && isGlobal {
 		resp, err := client.Groves().List(ctx, &hubclient.ListGrovesOptions{
 			Name: "global",
 		})
 		if err == nil && len(resp.Groves) > 0 {
-			registeredGrove = &resp.Groves[0]
+			linkedGrove = &resp.Groves[0]
 		}
 	}
 
-	if registeredGrove == nil {
-		result["registered"] = false
+	if linkedGrove == nil {
+		result["linked"] = false
 		return result
 	}
 
-	result["registered"] = true
-	result["hubGroveId"] = registeredGrove.ID
-	result["hubGroveName"] = registeredGrove.Name
+	result["linked"] = true
+	result["hubGroveId"] = linkedGrove.ID
+	result["hubGroveName"] = linkedGrove.Name
 
 	// Get runtime brokers for this grove
 	brokersResp, err := client.RuntimeBrokers().List(ctx, &hubclient.ListBrokersOptions{
-		GroveID: registeredGrove.ID,
+		GroveID: linkedGrove.ID,
 	})
 	if err != nil {
 		result["brokersError"] = err.Error()
@@ -1536,11 +1536,11 @@ func runHubLink(cmd *cobra.Command, args []string) error {
 	// Check if grove already exists on Hub
 	linked, err := isGroveLinked(ctx, client, groveID)
 	if err != nil {
-		util.Debugf("Error checking grove registration: %v", err)
+		util.Debugf("Error checking grove link status: %v", err)
 	}
 
 	if linked {
-		fmt.Printf("Grove '%s' is already registered on the Hub (ID: %s)\n", groveName, groveID)
+		fmt.Printf("Grove '%s' is already linked to the Hub (ID: %s)\n", groveName, groveID)
 	} else {
 		// Check for existing groves with the same name
 		resp, err := client.Groves().List(ctx, &hubclient.ListGrovesOptions{
@@ -1763,7 +1763,7 @@ func checkLocalBrokerServer(port int) (*BrokerHealthResponse, error) {
 	return &health, nil
 }
 
-// isGroveLinked checks if the grove is linked to the Hub (has hub.enabled=true and is registered).
+// isGroveLinked checks if the grove is linked to the Hub (has hub.enabled=true and exists on the Hub).
 func isGroveLinked(ctx context.Context, client hubclient.Client, groveID string) (bool, error) {
 	if groveID == "" {
 		return false, nil
@@ -1831,7 +1831,7 @@ func listBrokersForGrove(ctx context.Context, client hubclient.Client, groveID s
 	if len(resp.Brokers) == 0 {
 		fmt.Println()
 		fmt.Println("Warning: This grove has no active runtime brokers.")
-		fmt.Println("Register one with 'scion hub link'")
+		fmt.Println("Register one with 'scion broker register'")
 		return
 	}
 
