@@ -108,6 +108,7 @@ type CreateAgentRequest struct {
 	Annotations   map[string]string `json:"annotations,omitempty"`
 	Config        *AgentConfig      `json:"config,omitempty"`
 	Resume        bool              `json:"resume,omitempty"`
+	Attach        bool              `json:"attach,omitempty"` // If true, dispatch the agent even without a task (for interactive attach mode)
 	// WorkspaceFiles is populated for non-git workspace bootstrap.
 	WorkspaceFiles []transfer.FileInfo `json:"workspaceFiles,omitempty"`
 }

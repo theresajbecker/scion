@@ -362,6 +362,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		Task:          task,
 		Branch:        branch,
 		Resume:        resume,
+		Attach:        attach,
 	}
 
 	// Build config if we have image override or debug mode

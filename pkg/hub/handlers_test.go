@@ -280,6 +280,215 @@ func TestAgentCreate(t *testing.T) {
 	}
 }
 
+// TestAgentCreate_NoTask tests that creating an agent without a task succeeds
+// and leaves the agent in pending status (provision-only, for "scion create").
+func TestAgentCreate_NoTask(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	// Create a runtime broker
+	broker := &store.RuntimeBroker{
+		ID:     "host_notask",
+		Slug:   "notask-host",
+		Name:   "No Task Host",
+		Status: store.BrokerStatusOnline,
+	}
+	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	// Create a grove with default runtime broker
+	grove := &store.Grove{
+		ID:                     "grove_notask",
+		Slug:                   "notask-grove",
+		Name:                   "No Task Grove",
+		GitRemote:              "github.com/test/notask",
+		DefaultRuntimeBrokerID: broker.ID,
+		Created:                time.Now(),
+		Updated:                time.Now(),
+	}
+	if err := s.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	// Register the broker as a provider
+	contrib := &store.GroveProvider{
+		GroveID:    grove.ID,
+		BrokerID:   broker.ID,
+		BrokerName: broker.Name,
+		Status:     store.BrokerStatusOnline,
+	}
+	if err := s.AddGroveProvider(ctx, contrib); err != nil {
+		t.Fatalf("failed to add grove provider: %v", err)
+	}
+
+	// Create agent without a task via /api/v1/agents
+	body := map[string]interface{}{
+		"name":    "Taskless Agent",
+		"groveId": grove.ID,
+	}
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CreateAgentResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Agent == nil {
+		t.Fatal("expected agent to be set")
+	}
+
+	if resp.Agent.Status != store.AgentStatusPending {
+		t.Errorf("expected status 'pending', got %q", resp.Agent.Status)
+	}
+
+	if resp.Agent.Slug != "taskless-agent" {
+		t.Errorf("expected slug 'taskless-agent', got %q", resp.Agent.Slug)
+	}
+}
+
+// TestAgentCreate_NoTaskViaGrove tests creating an agent without a task via the grove endpoint.
+func TestAgentCreate_NoTaskViaGrove(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	// Create a runtime broker
+	broker := &store.RuntimeBroker{
+		ID:     "host_notask_grove",
+		Slug:   "notask-grove-host",
+		Name:   "No Task Grove Host",
+		Status: store.BrokerStatusOnline,
+	}
+	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	// Create a grove with default runtime broker
+	grove := &store.Grove{
+		ID:                     "grove_notask_grove",
+		Slug:                   "notask-grove-ep",
+		Name:                   "No Task Grove EP",
+		GitRemote:              "github.com/test/notask-grove",
+		DefaultRuntimeBrokerID: broker.ID,
+		Created:                time.Now(),
+		Updated:                time.Now(),
+	}
+	if err := s.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	// Register the broker as a provider
+	contrib := &store.GroveProvider{
+		GroveID:    grove.ID,
+		BrokerID:   broker.ID,
+		BrokerName: broker.Name,
+		Status:     store.BrokerStatusOnline,
+	}
+	if err := s.AddGroveProvider(ctx, contrib); err != nil {
+		t.Fatalf("failed to add grove provider: %v", err)
+	}
+
+	// Create agent without a task via /api/v1/groves/{id}/agents
+	body := map[string]interface{}{
+		"name": "Grove Taskless Agent",
+	}
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groves/"+grove.ID+"/agents", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CreateAgentResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Agent == nil {
+		t.Fatal("expected agent to be set")
+	}
+
+	if resp.Agent.Status != store.AgentStatusPending {
+		t.Errorf("expected status 'pending', got %q", resp.Agent.Status)
+	}
+}
+
+// TestAgentCreate_AttachNoTask tests that creating an agent with attach=true but no task
+// succeeds. The attach flag signals that the agent should be dispatched for interactive use.
+func TestAgentCreate_AttachNoTask(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	// Create a runtime broker
+	broker := &store.RuntimeBroker{
+		ID:     "host_attach",
+		Slug:   "attach-host",
+		Name:   "Attach Host",
+		Status: store.BrokerStatusOnline,
+	}
+	if err := s.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	// Create a grove with default runtime broker
+	grove := &store.Grove{
+		ID:                     "grove_attach",
+		Slug:                   "attach-grove",
+		Name:                   "Attach Grove",
+		GitRemote:              "github.com/test/attach",
+		DefaultRuntimeBrokerID: broker.ID,
+		Created:                time.Now(),
+		Updated:                time.Now(),
+	}
+	if err := s.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	// Register the broker as a provider
+	contrib := &store.GroveProvider{
+		GroveID:    grove.ID,
+		BrokerID:   broker.ID,
+		BrokerName: broker.Name,
+		Status:     store.BrokerStatusOnline,
+	}
+	if err := s.AddGroveProvider(ctx, contrib); err != nil {
+		t.Fatalf("failed to add grove provider: %v", err)
+	}
+
+	// Create agent with attach=true but no task
+	body := map[string]interface{}{
+		"name":    "Attach Agent",
+		"groveId": grove.ID,
+		"attach":  true,
+	}
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CreateAgentResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Agent == nil {
+		t.Fatal("expected agent to be set")
+	}
+
+	// Without a dispatcher, agent stays in pending status (dispatch is a no-op)
+	// but the request itself should succeed
+	if resp.Agent.Slug != "attach-agent" {
+		t.Errorf("expected slug 'attach-agent', got %q", resp.Agent.Slug)
+	}
+}
+
 // TestAgentCreate_SingleProvider tests that when a grove has no default runtime broker
 // but has exactly one online provider, that provider is used automatically.
 func TestAgentCreate_SingleProvider(t *testing.T) {
