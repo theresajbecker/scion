@@ -306,7 +306,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			if !hasPrompt {
+			if !hasPrompt && !req.Attach {
 				writeError(w, http.StatusBadRequest, ErrCodeValidationError,
 					"cannot start agent without a task: prompt.md is empty", nil)
 				return
@@ -378,6 +378,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			Model:   req.Config.Model,
 			Harness: s.getHarnessFromTemplate(resolvedTemplate, req.Template),
 			Task:    req.Task,
+			Attach:  req.Attach,
 		}
 	} else {
 		agent.Detached = true
@@ -385,6 +386,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		agent.AppliedConfig = &store.AgentAppliedConfig{
 			Harness: s.getHarnessFromTemplate(resolvedTemplate, req.Template),
 			Task:    req.Task,
+			Attach:  req.Attach,
 		}
 	}
 
@@ -1601,7 +1603,7 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 				return
 			}
 
-			if !hasPrompt {
+			if !hasPrompt && !req.Attach {
 				writeError(w, http.StatusBadRequest, ErrCodeValidationError,
 					"cannot start agent without a task: prompt.md is empty", nil)
 				return
@@ -1672,6 +1674,7 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 			Model:   req.Config.Model,
 			Harness: s.getHarnessFromTemplate(resolvedTemplate, req.Template),
 			Task:    req.Task,
+			Attach:  req.Attach,
 		}
 	} else {
 		agent.Detached = true
@@ -1679,6 +1682,7 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 		agent.AppliedConfig = &store.AgentAppliedConfig{
 			Harness: s.getHarnessFromTemplate(resolvedTemplate, req.Template),
 			Task:    req.Task,
+			Attach:  req.Attach,
 		}
 	}
 

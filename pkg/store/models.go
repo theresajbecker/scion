@@ -80,7 +80,8 @@ type AgentAppliedConfig struct {
 	Harness string            `json:"harness,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
 	Model   string            `json:"model,omitempty"`
-	Task    string            `json:"task,omitempty"` // Initial task/prompt for the agent
+	Task    string            `json:"task,omitempty"`   // Initial task/prompt for the agent
+	Attach  bool              `json:"attach,omitempty"` // If true, agent should start in attach (interactive) mode
 
 	// Template info for Runtime Broker hydration
 	TemplateID   string `json:"templateId,omitempty"`   // Hub template ID for fetching

@@ -153,6 +153,8 @@ type CreateAgentRequest struct {
 	// taking precedence over ResolvedEnv.
 	ResolvedEnv map[string]string `json:"resolvedEnv,omitempty"`
 
+	// Attach indicates the agent should start in interactive attach mode (not detached).
+	Attach bool `json:"attach,omitempty"`
 	// GrovePath is the local filesystem path to the grove on this runtime broker.
 	// This is provided by the Hub from the grove provider record.
 	GrovePath string `json:"grovePath,omitempty"`

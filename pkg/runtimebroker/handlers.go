@@ -290,7 +290,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 	opts := api.StartOptions{
 		Name:      req.Name,
-		Detached:  boolPtr(true),
+		Detached:  boolPtr(!req.Attach),
 		GrovePath: req.GrovePath,
 	}
 

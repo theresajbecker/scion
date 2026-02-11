@@ -389,6 +389,11 @@ func (d *HTTPAgentDispatcher) DispatchAgentCreate(ctx context.Context, agent *st
 		GrovePath:   grovePath,
 	}
 
+	// Propagate attach mode from applied config
+	if agent.AppliedConfig != nil {
+		req.Attach = agent.AppliedConfig.Attach
+	}
+
 	// Pass workspace storage path for GCS bootstrap (non-git workspaces)
 	if agent.AppliedConfig != nil && agent.AppliedConfig.WorkspaceStoragePath != "" {
 		req.WorkspaceStoragePath = agent.AppliedConfig.WorkspaceStoragePath

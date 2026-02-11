@@ -181,6 +181,8 @@ type RemoteCreateAgentRequest struct {
 	ResolvedEnv map[string]string  `json:"resolvedEnv,omitempty"`
 	HubEndpoint string             `json:"hubEndpoint,omitempty"`
 	AgentToken  string             `json:"agentToken,omitempty"`
+	// Attach indicates the agent should start in interactive attach mode (not detached).
+	Attach bool `json:"attach,omitempty"`
 	// GrovePath is the local filesystem path to the grove on the target runtime broker.
 	// This is looked up from the grove provider record for the target broker.
 	GrovePath string `json:"grovePath,omitempty"`
