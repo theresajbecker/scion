@@ -51,6 +51,7 @@ type SyncResult struct {
 	ToRemove   []AgentRef // Hub agents (for this broker) to remove (with IDs for API)
 	InSync     []string   // Agents already in sync
 	Pending    []AgentRef // Hub agents in pending status (not yet started, no local artifacts expected)
+	RemoteOnly []AgentRef // Hub agents created by other brokers after our last sync (no action needed)
 }
 
 // IsInSync returns true if there are no agents to sync.
@@ -85,6 +86,12 @@ func (r *SyncResult) ExcludeAgent(agentName string) *SyncResult {
 	for _, ref := range r.Pending {
 		if ref.Name != agentName {
 			result.Pending = append(result.Pending, ref)
+		}
+	}
+
+	for _, ref := range r.RemoteOnly {
+		if ref.Name != agentName {
+			result.RemoteOnly = append(result.RemoteOnly, ref)
 		}
 	}
 
@@ -348,6 +355,12 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 				"Sync agents: scion hub sync\n" +
 				"Or use local-only mode: scion --no-hub <command>")
 		}
+	} else {
+		// Already in sync — update the watermark to keep it current
+		now := time.Now().UTC().Format(time.RFC3339)
+		if err := config.UpdateSetting(hubCtx.GrovePath, "hub.lastSyncedAt", now, hubCtx.IsGlobal); err != nil {
+			debugf("Warning: failed to save lastSyncedAt: %v", err)
+		}
 	}
 
 	return hubCtx, nil
@@ -427,24 +440,41 @@ func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error)
 		}
 	}
 
-	// Find agents to remove (on Hub for this broker but not local)
-	// Skip agents in "pending" status - these are created on Hub but not yet started,
-	// so they're expected to not have local representation until the container is started.
+	// Parse lastSyncedAt from settings to distinguish remote-created agents from locally-deleted ones.
+	var lastSyncedAt time.Time
+	if hubCtx.Settings.Hub != nil && hubCtx.Settings.Hub.LastSyncedAt != "" {
+		if parsed, err := time.Parse(time.RFC3339, hubCtx.Settings.Hub.LastSyncedAt); err == nil {
+			lastSyncedAt = parsed
+			debugf("lastSyncedAt: %s", lastSyncedAt.Format(time.RFC3339))
+		} else {
+			debugf("Warning: failed to parse lastSyncedAt %q: %v", hubCtx.Settings.Hub.LastSyncedAt, err)
+		}
+	}
+
+	// Find agents on Hub but not locally present.
+	// Use lastSyncedAt to distinguish between:
+	// - Agents created by other brokers after our last sync → RemoteOnly (no action)
+	// - Agents that existed at last sync but were deleted locally → ToRemove
+	// - On first sync (no lastSyncedAt) → all hub-only agents are RemoteOnly (register-only mode)
+	// Skip agents in "pending" status - these are created on Hub but not yet started.
 	for _, a := range resp.Agents {
 		if !localAgentMap[a.Name] {
 			if a.Status == "pending" {
-				// Track pending agents separately - they don't require sync
 				result.Pending = append(result.Pending, AgentRef{Name: a.Name, ID: a.ID})
 				debugf("Agent %s (id=%s) is pending, not requiring sync", a.Name, a.ID)
+			} else if lastSyncedAt.IsZero() || a.Created.After(lastSyncedAt) {
+				// First sync or agent created after our last sync — another broker created it
+				result.RemoteOnly = append(result.RemoteOnly, AgentRef{Name: a.Name, ID: a.ID})
+				debugf("Agent %s (id=%s) created after last sync or first sync, treating as remote-only", a.Name, a.ID)
 			} else {
 				result.ToRemove = append(result.ToRemove, AgentRef{Name: a.Name, ID: a.ID})
-				debugf("Agent %s (id=%s) on Hub but not local, marking for removal", a.Name, a.ID)
+				debugf("Agent %s (id=%s) existed at last sync but not local, marking for removal", a.Name, a.ID)
 			}
 		}
 	}
 
-	debugf("Sync result: toRegister=%v, toRemove=%d, pending=%d, inSync=%d",
-		result.ToRegister, len(result.ToRemove), len(result.Pending), len(result.InSync))
+	debugf("Sync result: toRegister=%v, toRemove=%d, pending=%d, remoteOnly=%d, inSync=%d",
+		result.ToRegister, len(result.ToRemove), len(result.Pending), len(result.RemoteOnly), len(result.InSync))
 
 	return result, nil
 }
@@ -576,6 +606,12 @@ func ExecuteSync(ctx context.Context, hubCtx *HubContext, result *SyncResult, au
 
 	if len(result.ToRegister) > 0 || len(result.ToRemove) > 0 {
 		fmt.Println("Agent synchronization complete.")
+	}
+
+	// Update lastSyncedAt watermark after successful sync
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := config.UpdateSetting(hubCtx.GrovePath, "hub.lastSyncedAt", now, hubCtx.IsGlobal); err != nil {
+		debugf("Warning: failed to save lastSyncedAt: %v", err)
 	}
 
 	return nil

@@ -88,6 +88,15 @@ func ShowSyncPlan(result *SyncResult, autoConfirm bool) bool {
 		}
 	}
 
+	// Show remote-only agents for visibility (they don't require action)
+	if len(result.RemoteOnly) > 0 {
+		fmt.Println()
+		fmt.Println("Agents on Hub from other brokers (no action needed):")
+		for _, ref := range result.RemoteOnly {
+			fmt.Printf("  ~ %s\n", ref.Name)
+		}
+	}
+
 	fmt.Println()
 	return ConfirmAction("Proceed with sync?", true, autoConfirm)
 }

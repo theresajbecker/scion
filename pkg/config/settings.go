@@ -106,6 +106,10 @@ type HubClientConfig struct {
 	BrokerNickname string `json:"brokerNickname,omitempty" yaml:"brokerNickname,omitempty" koanf:"brokerNickname"`
 	// BrokerToken is the token received when registering this broker with the Hub
 	BrokerToken string `json:"brokerToken,omitempty" yaml:"brokerToken,omitempty" koanf:"brokerToken"`
+	// LastSyncedAt is the RFC3339 timestamp of the last successful Hub sync.
+	// Used to determine whether hub-only agents were created by other brokers
+	// (after this timestamp) or were locally deleted (before this timestamp).
+	LastSyncedAt string `json:"lastSyncedAt,omitempty" yaml:"lastSyncedAt,omitempty" koanf:"lastSyncedAt"`
 }
 
 type CLIConfig struct {
@@ -610,6 +614,11 @@ func UpdateSetting(grovePath string, key string, value string, global bool) erro
 		}
 		localOnly := value == "true"
 		current.Hub.LocalOnly = &localOnly
+	case "hub.lastSyncedAt":
+		if current.Hub == nil {
+			current.Hub = &HubClientConfig{}
+		}
+		current.Hub.LastSyncedAt = value
 	case "cli.autohelp":
 		if current.CLI == nil {
 			current.CLI = &CLIConfig{}
@@ -714,6 +723,11 @@ func GetSettingValue(s *Settings, key string) (string, error) {
 			return "false", nil
 		}
 		return "", nil
+	case "hub.lastSyncedAt":
+		if s.Hub != nil {
+			return s.Hub.LastSyncedAt, nil
+		}
+		return "", nil
 	case "cli.autohelp":
 		if s.CLI != nil && s.CLI.AutoHelp != nil {
 			if *s.CLI.AutoHelp {
@@ -765,6 +779,7 @@ func GetSettingsMap(s *Settings) map[string]string {
 		if s.Hub.BrokerToken != "" {
 			m["hub.brokerToken"] = "********" // Mask broker token
 		}
+		m["hub.lastSyncedAt"] = s.Hub.LastSyncedAt
 	}
 	if s.CLI != nil {
 		if s.CLI.AutoHelp != nil {

@@ -411,6 +411,102 @@ func TestGroveChoice_Constants(t *testing.T) {
 	}
 }
 
+func TestSyncResult_RemoteOnlyNotAffectIsInSync(t *testing.T) {
+	// RemoteOnly agents should not affect the IsInSync check
+	tests := []struct {
+		name     string
+		result   SyncResult
+		expected bool
+	}{
+		{
+			name: "only remote-only agents is in sync",
+			result: SyncResult{
+				ToRegister: nil,
+				ToRemove:   nil,
+				RemoteOnly: []AgentRef{{Name: "remote-agent", ID: "remote-id"}},
+				InSync:     nil,
+			},
+			expected: true,
+		},
+		{
+			name: "remote-only with in sync agents",
+			result: SyncResult{
+				ToRegister: nil,
+				ToRemove:   nil,
+				RemoteOnly: []AgentRef{{Name: "remote-agent", ID: "remote-id"}},
+				InSync:     []string{"agent1"},
+			},
+			expected: true,
+		},
+		{
+			name: "remote-only with agents to register",
+			result: SyncResult{
+				ToRegister: []string{"new-agent"},
+				ToRemove:   nil,
+				RemoteOnly: []AgentRef{{Name: "remote-agent", ID: "remote-id"}},
+				InSync:     nil,
+			},
+			expected: false,
+		},
+		{
+			name: "remote-only with agents to remove",
+			result: SyncResult{
+				ToRegister: nil,
+				ToRemove:   []AgentRef{{Name: "old-agent", ID: "old-id"}},
+				RemoteOnly: []AgentRef{{Name: "remote-agent", ID: "remote-id"}},
+				InSync:     nil,
+			},
+			expected: false,
+		},
+		{
+			name: "remote-only with pending is still in sync",
+			result: SyncResult{
+				ToRegister: nil,
+				ToRemove:   nil,
+				RemoteOnly: []AgentRef{{Name: "remote-agent", ID: "remote-id"}},
+				Pending:    []AgentRef{{Name: "pending-agent", ID: "pending-id"}},
+				InSync:     nil,
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.result.IsInSync(); got != tt.expected {
+				t.Errorf("IsInSync() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSyncResult_ExcludeAgent_WithRemoteOnly(t *testing.T) {
+	result := SyncResult{
+		ToRegister: []string{"agent1"},
+		ToRemove:   []AgentRef{{Name: "agent2", ID: "id2"}},
+		RemoteOnly: []AgentRef{{Name: "remote1", ID: "r1"}, {Name: "remote2", ID: "r2"}},
+		InSync:     []string{"agent3"},
+	}
+
+	// Exclude a remote-only agent
+	filtered := result.ExcludeAgent("remote1")
+
+	if len(filtered.RemoteOnly) != 1 {
+		t.Errorf("Expected 1 remote-only agent, got %d", len(filtered.RemoteOnly))
+	}
+	if len(filtered.RemoteOnly) > 0 && filtered.RemoteOnly[0].Name != "remote2" {
+		t.Errorf("Expected remote2, got %s", filtered.RemoteOnly[0].Name)
+	}
+
+	// Other lists should be unchanged
+	if len(filtered.ToRegister) != 1 {
+		t.Errorf("Expected 1 ToRegister agent, got %d", len(filtered.ToRegister))
+	}
+	if len(filtered.ToRemove) != 1 {
+		t.Errorf("Expected 1 ToRemove agent, got %d", len(filtered.ToRemove))
+	}
+}
+
 func TestGroveMatch_Fields(t *testing.T) {
 	match := GroveMatch{
 		ID:        "test-id",
