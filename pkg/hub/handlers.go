@@ -291,7 +291,26 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if existingAgent != nil && existingAgent.Status == store.AgentStatusCreated && !req.ProvisionOnly {
+	if existingAgent != nil && !req.ProvisionOnly &&
+		(existingAgent.Status == store.AgentStatusRunning ||
+			existingAgent.Status == store.AgentStatusStopped ||
+			existingAgent.Status == store.AgentStatusError) {
+		// Agent exists in a potentially stale state â delete and recreate
+		dispatcher := s.GetDispatcher()
+		if dispatcher != nil && existingAgent.RuntimeBrokerID != "" {
+			_ = dispatcher.DispatchAgentDelete(ctx, existingAgent, false, false)
+		}
+		if err := s.store.DeleteAgent(ctx, existingAgent.ID); err != nil {
+			writeErrorFromErr(w, err, "")
+			return
+		}
+		existingAgent = nil // Fall through to create new agent below
+	}
+
+	if existingAgent != nil && !req.ProvisionOnly &&
+		(existingAgent.Status == store.AgentStatusCreated ||
+			existingAgent.Status == store.AgentStatusProvisioning ||
+			existingAgent.Status == store.AgentStatusPending) {
 		// Agent was provisioned but not started — start it now.
 		dispatcher := s.GetDispatcher()
 		if dispatcher == nil || existingAgent.RuntimeBrokerID == "" {
@@ -481,8 +500,11 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 				warnings = append(warnings, "Failed to dispatch to runtime broker: "+err.Error())
 				// The agent remains in pending status
 			} else {
-				// Update agent status to reflect it's being started
-				agent.Status = store.AgentStatusProvisioning
+				// agent.Status is already set by applyBrokerResponse in DispatchAgentCreate.
+				// Only fall back to provisioning if the broker didn't report a status.
+				if agent.Status == store.AgentStatusPending {
+					agent.Status = store.AgentStatusProvisioning
+				}
 				if err := s.store.UpdateAgent(ctx, agent); err != nil {
 					warnings = append(warnings, "Failed to update agent status: "+err.Error())
 				}

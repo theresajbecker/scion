@@ -607,3 +607,287 @@ func TestDeleteGroveAgent_BrokerOffline(t *testing.T) {
 	_, err := s.GetAgent(ctx, agent.ID)
 	assert.NoError(t, err, "agent should still exist when broker is offline")
 }
+
+// createAgentDispatcher is a mock dispatcher for createAgent handler tests.
+// It allows controlling the status that DispatchAgentCreate reports back.
+type createAgentDispatcher struct {
+	createStatus string // status to set on agent during DispatchAgentCreate
+	deleteCalled bool
+}
+
+func (d *createAgentDispatcher) DispatchAgentCreate(_ context.Context, agent *store.Agent) error {
+	if d.createStatus != "" {
+		agent.Status = d.createStatus
+	}
+	return nil
+}
+func (d *createAgentDispatcher) DispatchAgentProvision(_ context.Context, agent *store.Agent) error {
+	agent.Status = store.AgentStatusCreated
+	return nil
+}
+func (d *createAgentDispatcher) DispatchAgentStart(_ context.Context, _ *store.Agent) error {
+	return nil
+}
+func (d *createAgentDispatcher) DispatchAgentStop(_ context.Context, _ *store.Agent) error {
+	return nil
+}
+func (d *createAgentDispatcher) DispatchAgentRestart(_ context.Context, _ *store.Agent) error {
+	return nil
+}
+func (d *createAgentDispatcher) DispatchAgentDelete(_ context.Context, _ *store.Agent, _, _ bool) error {
+	d.deleteCalled = true
+	return nil
+}
+func (d *createAgentDispatcher) DispatchAgentMessage(_ context.Context, _ *store.Agent, _ string, _ bool) error {
+	return nil
+}
+func (d *createAgentDispatcher) DispatchCheckAgentPrompt(_ context.Context, _ *store.Agent) (bool, error) {
+	return false, nil
+}
+
+// setupCreateAgentServer creates a test server with a dispatcher and a grove+broker ready for agent creation.
+func setupCreateAgentServer(t *testing.T, disp AgentDispatcher) (*Server, store.Store, *store.Grove) {
+	t.Helper()
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	grove := &store.Grove{
+		ID:   "grove-create",
+		Name: "Create Test Grove",
+		Slug: "create-test-grove",
+	}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	broker := &store.RuntimeBroker{
+		ID:     "broker-create",
+		Name:   "Create Test Broker",
+		Slug:   "create-test-broker",
+		Status: store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
+
+	provider := &store.GroveProvider{
+		GroveID:    grove.ID,
+		BrokerID:   broker.ID,
+		BrokerName: broker.Name,
+		Status:     store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.AddGroveProvider(ctx, provider))
+
+	grove.DefaultRuntimeBrokerID = broker.ID
+	require.NoError(t, s.UpdateGrove(ctx, grove))
+
+	srv.SetDispatcher(disp)
+	return srv, s, grove
+}
+
+func TestCreateAgent_BrokerStatusPreserved(t *testing.T) {
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Create an agent with a task — should dispatch and preserve broker-reported "running" status
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "status-test",
+		GroveID: grove.ID,
+		Task:    "do something",
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+
+	// The response should reflect the broker-reported status, not hardcoded "provisioning"
+	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status,
+		"agent status should reflect broker response, not hardcoded provisioning")
+
+	// Verify persisted status in store
+	persisted, err := s.GetAgent(ctx, resp.Agent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.AgentStatusRunning, persisted.Status,
+		"persisted agent status should match broker response")
+}
+
+func TestCreateAgent_FallbackToProvisioningWhenNoBrokerStatus(t *testing.T) {
+	// Dispatcher that doesn't set a status (leaves it as "pending")
+	disp := &createAgentDispatcher{createStatus: ""}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "fallback-test",
+		GroveID: grove.ID,
+		Task:    "do something",
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+
+	// When broker doesn't report a status, should fall back to "provisioning"
+	assert.Equal(t, store.AgentStatusProvisioning, resp.Agent.Status,
+		"agent status should fall back to provisioning when broker doesn't report status")
+}
+
+func TestCreateAgent_RestartFromProvisioningStatus(t *testing.T) {
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Pre-create an agent stuck in "provisioning" status (simulating Bug 1)
+	stuckAgent := &store.Agent{
+		ID:              "agent-stuck-prov",
+		Slug:            "stuck-agent",
+		Name:            "stuck-agent",
+		GroveID:         grove.ID,
+		RuntimeBrokerID: "broker-create",
+		Status:          store.AgentStatusProvisioning,
+	}
+	require.NoError(t, s.CreateAgent(ctx, stuckAgent))
+
+	// Try to start the same agent name — should succeed by re-starting, not 409
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "stuck-agent",
+		GroveID: grove.ID,
+		Task:    "retry task",
+	})
+
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"re-starting an agent stuck in provisioning should succeed (200), not conflict (409)")
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status)
+}
+
+func TestCreateAgent_RestartFromPendingStatus(t *testing.T) {
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Pre-create an agent in "pending" status
+	pendingAgent := &store.Agent{
+		ID:              "agent-pending",
+		Slug:            "pending-agent",
+		Name:            "pending-agent",
+		GroveID:         grove.ID,
+		RuntimeBrokerID: "broker-create",
+		Status:          store.AgentStatusPending,
+	}
+	require.NoError(t, s.CreateAgent(ctx, pendingAgent))
+
+	// Try to start the same agent name — should succeed
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "pending-agent",
+		GroveID: grove.ID,
+		Task:    "retry task",
+	})
+
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"re-starting an agent in pending status should succeed")
+}
+
+func TestCreateAgent_RecreateFromRunningStatus(t *testing.T) {
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Pre-create an agent in "running" status (stale — container may have died)
+	runningAgent := &store.Agent{
+		ID:              "agent-running-stale",
+		Slug:            "running-agent",
+		Name:            "running-agent",
+		GroveID:         grove.ID,
+		RuntimeBrokerID: "broker-create",
+		Status:          store.AgentStatusRunning,
+	}
+	require.NoError(t, s.CreateAgent(ctx, runningAgent))
+
+	// Start with the same name — should delete old agent and create new one
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "running-agent",
+		GroveID: grove.ID,
+		Task:    "new task",
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code,
+		"re-creating agent from running status should succeed with 201")
+
+	// Old agent should be deleted
+	_, err := s.GetAgent(ctx, "agent-running-stale")
+	assert.ErrorIs(t, err, store.ErrNotFound, "old agent should be deleted")
+
+	// Dispatcher should have been asked to delete
+	assert.True(t, disp.deleteCalled, "dispatcher should have been asked to delete old agent")
+
+	// New agent should exist
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+	assert.NotEqual(t, "agent-running-stale", resp.Agent.ID, "new agent should have a different ID")
+	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status)
+}
+
+func TestCreateAgent_RecreateFromErrorStatus(t *testing.T) {
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Pre-create an agent in "error" status
+	errorAgent := &store.Agent{
+		ID:              "agent-errored",
+		Slug:            "error-agent",
+		Name:            "error-agent",
+		GroveID:         grove.ID,
+		RuntimeBrokerID: "broker-create",
+		Status:          store.AgentStatusError,
+	}
+	require.NoError(t, s.CreateAgent(ctx, errorAgent))
+
+	// Start with the same name — should delete and recreate
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "error-agent",
+		GroveID: grove.ID,
+		Task:    "retry after error",
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code,
+		"re-creating agent from error status should succeed with 201")
+
+	// Old agent should be deleted
+	_, err := s.GetAgent(ctx, "agent-errored")
+	assert.ErrorIs(t, err, store.ErrNotFound, "old errored agent should be deleted")
+}
+
+func TestCreateAgent_RecreateFromStoppedStatus(t *testing.T) {
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Pre-create an agent in "stopped" status
+	stoppedAgent := &store.Agent{
+		ID:              "agent-stopped",
+		Slug:            "stopped-agent",
+		Name:            "stopped-agent",
+		GroveID:         grove.ID,
+		RuntimeBrokerID: "broker-create",
+		Status:          store.AgentStatusStopped,
+	}
+	require.NoError(t, s.CreateAgent(ctx, stoppedAgent))
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "stopped-agent",
+		GroveID: grove.ID,
+		Task:    "restart after stop",
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code,
+		"re-creating agent from stopped status should succeed with 201")
+
+	_, err := s.GetAgent(ctx, "agent-stopped")
+	assert.ErrorIs(t, err, store.ErrNotFound, "old stopped agent should be deleted")
+}
