@@ -24,6 +24,7 @@ import (
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/knadh/koanf/v2"
 	"github.com/ptone/scion-agent/pkg/api"
@@ -1033,14 +1034,16 @@ func LoadEffectiveSettings(grovePath string) (*VersionedSettings, []string, erro
 
 // MigrationResult reports what happened during a migration.
 type MigrationResult struct {
-	Path          string   `json:"path"`           // settings file that was migrated
-	BackupPath    string   `json:"backup_path"`    // path of backup file created
-	Format        string   `json:"format"`         // "legacy" or "versioned" (already up-to-date)
-	Warnings      []string `json:"warnings"`       // deprecation warnings from AdaptLegacySettings
-	StateMigrated bool     `json:"state_migrated"` // true if hub.lastSyncedAt was moved to state.yaml
-	WasJSON       bool     `json:"was_json"`       // true if source was .json format
-	Skipped       bool     `json:"skipped"`        // true if file was already versioned or missing
-	SkipReason    string   `json:"skip_reason"`    // reason for skipping
+	Path             string   `json:"path"`              // settings file that was migrated
+	BackupPath       string   `json:"backup_path"`       // path of backup file created
+	Format           string   `json:"format"`            // "legacy" or "versioned" (already up-to-date)
+	Warnings         []string `json:"warnings"`          // deprecation warnings from AdaptLegacySettings
+	StateMigrated    bool     `json:"state_migrated"`    // true if hub.lastSyncedAt was moved to state.yaml
+	ServerMigrated   bool     `json:"server_migrated"`   // true if server.yaml was merged into settings
+	ServerBackupPath string   `json:"server_backup_path"`// path of server.yaml backup created
+	WasJSON          bool     `json:"was_json"`          // true if source was .json format
+	Skipped          bool     `json:"skipped"`           // true if file was already versioned or missing
+	SkipReason       string   `json:"skip_reason"`       // reason for skipping
 }
 
 // SaveVersionedSettings writes a VersionedSettings struct as YAML to settings.yaml in dir.
@@ -1059,6 +1062,8 @@ func SaveVersionedSettings(dir string, vs *VersionedSettings) error {
 }
 
 // MigrateSettingsFile migrates a single legacy settings file in dir to versioned format.
+// If a server.yaml exists in the same directory, it is also merged into the settings
+// under the "server" key and backed up.
 // If dryRun is true, no files are written.
 // Returns MigrationResult describing what was (or would be) done.
 func MigrateSettingsFile(dir string, dryRun bool) (*MigrationResult, error) {
@@ -1112,6 +1117,40 @@ func MigrateSettingsFile(dir string, dryRun bool) (*MigrationResult, error) {
 	vs, warnings := AdaptLegacySettings(&legacy)
 	result.Warnings = warnings
 
+	// 4b. Check for server.yaml and merge if present
+	serverPath := GetServerConfigPath(dir)
+	if serverPath != "" {
+		serverGC, err := loadServerConfigOnly(serverPath)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("failed to load %s: %v (skipping server migration)", serverPath, err))
+		} else {
+			v1Server := ConvertGlobalToV1ServerConfig(serverGC)
+			// Merge: preserve broker identity from legacy hub settings if the
+			// server.yaml doesn't already have them.
+			legacyBroker := vs.Server
+			vs.Server = v1Server
+			if legacyBroker != nil && legacyBroker.Broker != nil {
+				if vs.Server.Broker == nil {
+					vs.Server.Broker = legacyBroker.Broker
+				} else {
+					if vs.Server.Broker.BrokerID == "" {
+						vs.Server.Broker.BrokerID = legacyBroker.Broker.BrokerID
+					}
+					if vs.Server.Broker.BrokerNickname == "" {
+						vs.Server.Broker.BrokerNickname = legacyBroker.Broker.BrokerNickname
+					}
+					if vs.Server.Broker.BrokerToken == "" {
+						vs.Server.Broker.BrokerToken = legacyBroker.Broker.BrokerToken
+					}
+				}
+			}
+			result.ServerMigrated = true
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("server.yaml merged into settings.yaml under 'server' key (source: %s)", serverPath))
+		}
+	}
+
 	// 5. Handle hub.lastSyncedAt: migrate to state.yaml
 	if legacy.Hub != nil && legacy.Hub.LastSyncedAt != "" {
 		result.StateMigrated = true
@@ -1150,21 +1189,50 @@ func MigrateSettingsFile(dir string, dryRun bool) (*MigrationResult, error) {
 		return result, nil
 	}
 
-	// 8. Back up the original file
+	// 8. Back up the original settings file
 	backupPath := getBackupPath(settingsPath)
 	if err := os.Rename(settingsPath, backupPath); err != nil {
 		return nil, fmt.Errorf("failed to create backup %s: %w", backupPath, err)
 	}
 	result.BackupPath = backupPath
 
+	// 8b. Back up server.yaml if it was merged
+	if result.ServerMigrated && serverPath != "" {
+		serverBackup := getBackupPath(serverPath)
+		if err := os.Rename(serverPath, serverBackup); err != nil {
+			// Non-fatal: settings migration succeeded, server.yaml backup failed
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("warning: failed to back up %s: %v", serverPath, err))
+		} else {
+			result.ServerBackupPath = serverBackup
+		}
+	}
+
 	// 9. Write versioned settings
 	if err := SaveVersionedSettings(dir, vs); err != nil {
-		// Attempt to restore backup on failure
+		// Attempt to restore backups on failure
 		_ = os.Rename(backupPath, settingsPath)
+		if result.ServerBackupPath != "" {
+			_ = os.Rename(result.ServerBackupPath, serverPath)
+		}
 		return nil, fmt.Errorf("failed to write versioned settings: %w", err)
 	}
 
 	return result, nil
+}
+
+// loadServerConfigOnly loads a GlobalConfig from a single server.yaml file
+// without applying defaults or environment variable overrides.
+func loadServerConfigOnly(path string) (*GlobalConfig, error) {
+	k := koanf.New(".")
+	if err := k.Load(file.Provider(path), yaml.Parser()); err != nil {
+		return nil, fmt.Errorf("failed to load %s: %w", path, err)
+	}
+	var gc GlobalConfig
+	if err := k.Unmarshal("", &gc); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal server config: %w", err)
+	}
+	return &gc, nil
 }
 
 // getBackupPath returns a backup file path that does not already exist.

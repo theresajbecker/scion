@@ -307,7 +307,6 @@ against the schema — they use the pre-versioned format.`,
 }
 
 var (
-	configMigrateServer bool
 	configMigrateDryRun bool
 	configMigrateGlobal bool
 )
@@ -317,10 +316,10 @@ var configMigrateCmd = &cobra.Command{
 	Short: "Migrate configuration to the versioned format",
 	Long: `Migrate configuration files to the versioned settings format.
 
-Without flags, migrates all legacy settings.yaml files (global and grove-level)
-to the versioned format with schema_version.
+Migrates legacy settings.yaml files (global and grove-level) to the versioned
+format with schema_version. If a server.yaml exists alongside the settings file,
+it is automatically merged under the 'server' key.
 
-Use --server to consolidate server.yaml into settings.yaml under the 'server' key.
 Use --dry-run to preview changes without writing files.
 Use --global to migrate only the global settings file.
 
@@ -332,75 +331,10 @@ Examples:
   scion config migrate
 
   # Migrate only global settings
-  scion config migrate --global
-
-  # Migrate server.yaml into settings.yaml
-  scion config migrate --server`,
+  scion config migrate --global`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if configMigrateServer {
-			return runServerMigration()
-		}
 		return runSettingsMigration()
 	},
-}
-
-// runServerMigration handles the --server migration path (server.yaml → settings.yaml).
-func runServerMigration() error {
-	globalDir, err := config.GetGlobalDir()
-	if err != nil {
-		return fmt.Errorf("failed to get global directory: %w", err)
-	}
-
-	// Load existing server.yaml
-	serverYAMLPath := config.GetServerConfigPath(globalDir)
-	if serverYAMLPath == "" {
-		return fmt.Errorf("no server.yaml found in %s — nothing to migrate", globalDir)
-	}
-
-	gc, err := config.LoadGlobalConfig(globalDir)
-	if err != nil {
-		return fmt.Errorf("failed to load server config: %w", err)
-	}
-
-	// Convert to V1ServerConfig
-	v1Server := config.ConvertGlobalToV1ServerConfig(gc)
-
-	if configMigrateDryRun {
-		fmt.Println("Dry run: would merge the following into settings.yaml under 'server' key:")
-		fmt.Println()
-		data, err := config.MarshalV1ServerConfig(v1Server)
-		if err != nil {
-			return fmt.Errorf("failed to marshal server config: %w", err)
-		}
-		fmt.Printf("server:\n")
-		// Indent each line
-		for _, line := range splitLines(string(data)) {
-			if line != "" {
-				fmt.Printf("  %s\n", line)
-			} else {
-				fmt.Println()
-			}
-		}
-		fmt.Printf("\nSource: %s\n", serverYAMLPath)
-		fmt.Println("Run without --dry-run to apply.")
-		return nil
-	}
-
-	// Merge into settings.yaml
-	if err := config.MergeServerIntoSettings(globalDir, v1Server); err != nil {
-		return fmt.Errorf("failed to merge server config into settings.yaml: %w", err)
-	}
-
-	// Back up the original server.yaml
-	backupPath := serverYAMLPath + ".bak"
-	if err := os.Rename(serverYAMLPath, backupPath); err != nil {
-		fmt.Printf("Warning: failed to back up %s: %v\n", serverYAMLPath, err)
-	} else {
-		fmt.Printf("Backed up %s to %s\n", serverYAMLPath, backupPath)
-	}
-
-	fmt.Printf("Server config migrated into %s under 'server' key.\n", config.GetSettingsPath(globalDir))
-	return nil
 }
 
 // runSettingsMigration handles general settings migration (legacy → versioned).
@@ -487,6 +421,17 @@ func runSettingsMigration() error {
 			}
 		}
 
+		if r.ServerMigrated {
+			if configMigrateDryRun {
+				fmt.Println("  Would merge server.yaml into settings.yaml under 'server' key")
+			} else {
+				fmt.Println("  Merged server.yaml into settings.yaml under 'server' key")
+				if r.ServerBackupPath != "" {
+					fmt.Printf("  Server backup: %s\n", r.ServerBackupPath)
+				}
+			}
+		}
+
 		if r.StateMigrated {
 			if configMigrateDryRun {
 				fmt.Println("  Would migrate hub.lastSyncedAt to state.yaml")
@@ -506,22 +451,6 @@ func runSettingsMigration() error {
 	return migrationErr
 }
 
-// splitLines splits a string into lines.
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i, c := range s {
-		if c == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}
-
 func init() {
 	rootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configListCmd)
@@ -531,7 +460,6 @@ func init() {
 	configCmd.AddCommand(configMigrateCmd)
 
 	configSetCmd.Flags().BoolVar(&configGlobal, "global", false, "Set configuration globally (~/.scion/settings.json)")
-	configMigrateCmd.Flags().BoolVar(&configMigrateServer, "server", false, "Migrate server.yaml into settings.yaml")
 	configMigrateCmd.Flags().BoolVar(&configMigrateDryRun, "dry-run", false, "Preview changes without writing files")
 	configMigrateCmd.Flags().BoolVar(&configMigrateGlobal, "global", false, "Migrate only the global settings file")
 }
