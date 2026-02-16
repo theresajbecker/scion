@@ -941,7 +941,7 @@ func TestResolveHarnessConfig_WithProfileOverrides(t *testing.T) {
 				Runtime: "docker",
 				Env:     map[string]string{"PROFILE_KEY": "profile_value"},
 				Volumes: []api.VolumeMount{{Source: "/profile/vol", Target: "/mnt/vol"}},
-				HarnessOverrides: map[string]HarnessOverride{
+				HarnessOverrides: map[string]V1HarnessOverride{
 					"gemini": {
 						Image: "example.com/gemini:staging",
 						Env:   map[string]string{"OVERRIDE_KEY": "override_value"},
@@ -2306,6 +2306,72 @@ profiles:
 	}
 	assert.True(t, hasHarnessWarning, "should warn about harnesses rename")
 	assert.True(t, hasBrokerWarning, "should warn about brokerId move")
+}
+
+func TestMigrateSettingsFile_HarnessOverrideAuthSelectedType(t *testing.T) {
+	// Regression test: legacy auth_selectedType (camelCase) must be migrated to
+	// auth_selected_type (snake_case) and pass schema validation.
+	tmpDir := t.TempDir()
+
+	legacyContent := `
+grove_id: github.com/example/project
+active_profile: local
+default_template: claude
+hub:
+    enabled: false
+cli:
+    autohelp: false
+runtimes:
+    container:
+        tmux: true
+    docker: {}
+    kubernetes: {}
+harnesses:
+    claude:
+        image: example.com/scion-claude:latest
+        user: scion
+    gemini:
+        image: example.com/scion-gemini:latest
+        user: scion
+profiles:
+    local:
+        runtime: container
+        tmux: true
+        harness_overrides:
+            gemini:
+                auth_selectedType: oauth-personal
+    remote:
+        runtime: kubernetes
+        tmux: true
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.yaml"), []byte(legacyContent), 0644))
+
+	result, err := MigrateSettingsFile(tmpDir, false)
+	require.NoError(t, err)
+
+	assert.False(t, result.Skipped)
+	assert.Equal(t, "legacy", result.Format)
+
+	// Read the migrated file
+	newData, err := os.ReadFile(filepath.Join(tmpDir, "settings.yaml"))
+	require.NoError(t, err)
+
+	// Must validate against the schema
+	valErrors, err := ValidateSettings(newData, "1")
+	require.NoError(t, err)
+	assert.Empty(t, valErrors, "migrated file should pass schema validation: %v", valErrors)
+
+	// Verify the field was written as snake_case
+	var vs VersionedSettings
+	require.NoError(t, yaml.Unmarshal(newData, &vs))
+
+	require.Contains(t, vs.Profiles, "local")
+	require.Contains(t, vs.Profiles["local"].HarnessOverrides, "gemini")
+	assert.Equal(t, "oauth-personal", vs.Profiles["local"].HarnessOverrides["gemini"].AuthSelectedType)
+
+	// Also verify the raw YAML contains snake_case, not camelCase
+	assert.Contains(t, string(newData), "auth_selected_type")
+	assert.NotContains(t, string(newData), "auth_selectedType")
 }
 
 // --- Helper ---

@@ -301,16 +301,27 @@ type HarnessConfigEntry struct {
 	AuthSelectedType string            `json:"auth_selected_type,omitempty" yaml:"auth_selected_type,omitempty" koanf:"auth_selected_type"`
 }
 
+// V1HarnessOverride defines a harness override entry in versioned settings.
+// Uses snake_case tags, unlike the legacy HarnessOverride (which uses camelCase auth_selectedType).
+type V1HarnessOverride struct {
+	Image            string            `json:"image,omitempty" yaml:"image,omitempty" koanf:"image"`
+	User             string            `json:"user,omitempty" yaml:"user,omitempty" koanf:"user"`
+	Env              map[string]string `json:"env,omitempty" yaml:"env,omitempty" koanf:"env"`
+	Volumes          []api.VolumeMount `json:"volumes,omitempty" yaml:"volumes,omitempty" koanf:"volumes"`
+	AuthSelectedType string            `json:"auth_selected_type,omitempty" yaml:"auth_selected_type,omitempty" koanf:"auth_selected_type"`
+	Resources        *api.ResourceSpec `json:"resources,omitempty" yaml:"resources,omitempty" koanf:"resources"`
+}
+
 // V1ProfileConfig extends ProfileConfig with new fields for versioned settings.
 type V1ProfileConfig struct {
-	Runtime              string                     `json:"runtime" yaml:"runtime" koanf:"runtime"`
-	DefaultTemplate      string                     `json:"default_template,omitempty" yaml:"default_template,omitempty" koanf:"default_template"`
-	DefaultHarnessConfig string                     `json:"default_harness_config,omitempty" yaml:"default_harness_config,omitempty" koanf:"default_harness_config"`
-	Tmux                 *bool                      `json:"tmux,omitempty" yaml:"tmux,omitempty" koanf:"tmux"`
-	Env                  map[string]string          `json:"env,omitempty" yaml:"env,omitempty" koanf:"env"`
-	Volumes              []api.VolumeMount          `json:"volumes,omitempty" yaml:"volumes,omitempty" koanf:"volumes"`
-	Resources            *api.ResourceSpec          `json:"resources,omitempty" yaml:"resources,omitempty" koanf:"resources"`
-	HarnessOverrides     map[string]HarnessOverride `json:"harness_overrides,omitempty" yaml:"harness_overrides,omitempty" koanf:"harness_overrides"`
+	Runtime              string                       `json:"runtime" yaml:"runtime" koanf:"runtime"`
+	DefaultTemplate      string                       `json:"default_template,omitempty" yaml:"default_template,omitempty" koanf:"default_template"`
+	DefaultHarnessConfig string                       `json:"default_harness_config,omitempty" yaml:"default_harness_config,omitempty" koanf:"default_harness_config"`
+	Tmux                 *bool                        `json:"tmux,omitempty" yaml:"tmux,omitempty" koanf:"tmux"`
+	Env                  map[string]string            `json:"env,omitempty" yaml:"env,omitempty" koanf:"env"`
+	Volumes              []api.VolumeMount            `json:"volumes,omitempty" yaml:"volumes,omitempty" koanf:"volumes"`
+	Resources            *api.ResourceSpec            `json:"resources,omitempty" yaml:"resources,omitempty" koanf:"resources"`
+	HarnessOverrides     map[string]V1HarnessOverride `json:"harness_overrides,omitempty" yaml:"harness_overrides,omitempty" koanf:"harness_overrides"`
 }
 
 // resolveEffectiveGrovePath resolves the effective grove path for settings loading.
@@ -882,14 +893,28 @@ func AdaptLegacySettings(legacy *Settings) (*VersionedSettings, []string) {
 	if legacy.Profiles != nil {
 		vs.Profiles = make(map[string]V1ProfileConfig, len(legacy.Profiles))
 		for name, pc := range legacy.Profiles {
-			vs.Profiles[name] = V1ProfileConfig{
-				Runtime:          pc.Runtime,
-				Tmux:             pc.Tmux,
-				Env:              pc.Env,
-				Volumes:          pc.Volumes,
-				Resources:        pc.Resources,
-				HarnessOverrides: pc.HarnessOverrides,
+			profile := V1ProfileConfig{
+				Runtime:   pc.Runtime,
+				Tmux:      pc.Tmux,
+				Env:       pc.Env,
+				Volumes:   pc.Volumes,
+				Resources: pc.Resources,
 			}
+			// Convert HarnessOverride → V1HarnessOverride (camelCase → snake_case tags)
+			if pc.HarnessOverrides != nil {
+				profile.HarnessOverrides = make(map[string]V1HarnessOverride, len(pc.HarnessOverrides))
+				for hk, ho := range pc.HarnessOverrides {
+					profile.HarnessOverrides[hk] = V1HarnessOverride{
+						Image:            ho.Image,
+						User:             ho.User,
+						Env:              ho.Env,
+						Volumes:          ho.Volumes,
+						AuthSelectedType: ho.AuthSelectedType,
+						Resources:        ho.Resources,
+					}
+				}
+			}
+			vs.Profiles[name] = profile
 		}
 	}
 
@@ -961,17 +986,31 @@ func convertVersionedToLegacy(vs *VersionedSettings) *Settings {
 	}
 
 	// Convert Profiles — drop new fields (DefaultTemplate, DefaultHarnessConfig)
+	// Convert V1HarnessOverride → HarnessOverride (snake_case → camelCase tags)
 	if vs.Profiles != nil {
 		s.Profiles = make(map[string]ProfileConfig, len(vs.Profiles))
 		for name, pc := range vs.Profiles {
-			s.Profiles[name] = ProfileConfig{
-				Runtime:          pc.Runtime,
-				Tmux:             pc.Tmux,
-				Env:              pc.Env,
-				Volumes:          pc.Volumes,
-				Resources:        pc.Resources,
-				HarnessOverrides: pc.HarnessOverrides,
+			profile := ProfileConfig{
+				Runtime:   pc.Runtime,
+				Tmux:      pc.Tmux,
+				Env:       pc.Env,
+				Volumes:   pc.Volumes,
+				Resources: pc.Resources,
 			}
+			if pc.HarnessOverrides != nil {
+				profile.HarnessOverrides = make(map[string]HarnessOverride, len(pc.HarnessOverrides))
+				for hk, ho := range pc.HarnessOverrides {
+					profile.HarnessOverrides[hk] = HarnessOverride{
+						Image:            ho.Image,
+						User:             ho.User,
+						Env:              ho.Env,
+						Volumes:          ho.Volumes,
+						AuthSelectedType: ho.AuthSelectedType,
+						Resources:        ho.Resources,
+					}
+				}
+			}
+			s.Profiles[name] = profile
 		}
 	}
 
