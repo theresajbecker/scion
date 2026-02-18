@@ -44,19 +44,42 @@ import {
   setPageRoutesConfig,
   createApiRouter,
   createAuthRouter,
+  createSseRouter,
 } from './routes/index.js';
+import { NatsClient, SSEManager } from './services/index.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
+
+/** Extended app context with NATS/SSE services */
+export interface AppServices {
+  natsClient: NatsClient | null;
+  sseManager: SSEManager | null;
+}
 
 /**
  * Creates and configures the Koa application
  *
  * @param config - Application configuration
- * @returns Configured Koa application
+ * @returns Configured Koa application with services on context
  */
-export function createApp(config: AppConfig): Koa {
-  const app = new Koa();
+export function createApp(config: AppConfig): Koa & { services: AppServices } {
+  const app = new Koa() as Koa & { services: AppServices };
   const router = new Router();
+
+  // Initialize NATS/SSE services (connection happens later in index.ts)
+  let natsClient: NatsClient | null = null;
+  let sseManager: SSEManager | null = null;
+
+  if (config.nats.enabled && config.nats.servers.length > 0) {
+    natsClient = new NatsClient({
+      servers: config.nats.servers,
+      token: config.nats.token,
+      maxReconnectAttempts: config.nats.maxReconnectAttempts,
+    });
+    sseManager = new SSEManager(natsClient);
+  }
+
+  app.services = { natsClient, sseManager };
 
   // Trust proxy headers (for Cloud Run)
   app.proxy = true;
@@ -118,6 +141,13 @@ export function createApp(config: AppConfig): Koa {
   const apiRouter = createApiRouter(config);
   router.use('/api', apiRouter.routes());
   router.use('/api', apiRouter.allowedMethods());
+
+  // Mount SSE route (between API proxy and page routes)
+  if (sseManager && natsClient) {
+    const sseRouter = createSseRouter(sseManager, natsClient);
+    router.use(sseRouter.routes());
+    router.use(sseRouter.allowedMethods());
+  }
 
   // Mount SSR page routes (catch-all, should be last)
   router.use(pageRoutes.routes());

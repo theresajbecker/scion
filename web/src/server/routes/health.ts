@@ -22,12 +22,15 @@
 
 import Router from '@koa/router';
 
+import type { AppServices } from '../app.js';
+
 const router = new Router();
 
 interface HealthResponse {
   status: 'healthy' | 'unhealthy';
   timestamp: string;
   uptime: number;
+  nats?: string | undefined;
 }
 
 /**
@@ -52,21 +55,26 @@ router.get('/healthz', (ctx) => {
  * GET /readyz - Readiness probe
  *
  * Returns healthy if the server is ready to serve traffic.
- * In the future, this will check database connections, NATS connectivity, etc.
+ * Reports NATS connection status when enabled.
  */
 router.get('/readyz', (ctx) => {
-  // TODO: Add checks for:
-  // - Hub API connectivity
-  // - NATS connection
-  // - Session store
+  const services = (ctx.app as unknown as { services?: AppServices }).services;
+  const natsClient = services?.natsClient;
+
+  // If NATS is enabled but not connected, report unhealthy
+  const natsUnhealthy = natsClient && !natsClient.isConnected;
 
   const response: HealthResponse = {
-    status: 'healthy',
+    status: natsUnhealthy ? 'unhealthy' : 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   };
 
-  ctx.status = 200;
+  if (natsClient) {
+    response.nats = natsClient.status;
+  }
+
+  ctx.status = natsUnhealthy ? 503 : 200;
   ctx.type = 'application/json';
   ctx.body = response;
 });

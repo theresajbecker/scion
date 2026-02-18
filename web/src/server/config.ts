@@ -61,6 +61,18 @@ export interface AppConfig {
     maxAge: number;
   };
 
+  /** NATS configuration */
+  nats: {
+    /** NATS server URLs */
+    servers: string[];
+    /** Optional auth token */
+    token?: string | undefined;
+    /** Whether NATS is enabled */
+    enabled: boolean;
+    /** Max reconnect attempts (-1 for infinite) */
+    maxReconnectAttempts: number;
+  };
+
   /** Authentication configuration */
   auth: {
     /** Google OAuth client ID */
@@ -115,6 +127,16 @@ export function loadConfig(): AppConfig {
     ? '' // Must be configured in production
     : `http://localhost:${port}`;
 
+  // NATS configuration
+  const natsUrl = getEnvString('SCION_NATS_URL', '') || getEnvString('NATS_URL', '');
+  const natsServers = natsUrl
+    ? natsUrl.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
+    : [];
+  const natsToken = getEnvString('NATS_TOKEN', '') || undefined;
+  const natsEnabled = natsUrl
+    ? getEnvBoolean('NATS_ENABLED', true)
+    : getEnvBoolean('NATS_ENABLED', false);
+
   return {
     port,
     host,
@@ -139,6 +161,13 @@ export function loadConfig(): AppConfig {
         "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*",
       ].join('; '),
       hstsMaxAge: production ? 31536000 : 0, // 1 year in production
+    },
+
+    nats: {
+      servers: natsServers,
+      token: natsToken,
+      enabled: natsEnabled,
+      maxReconnectAttempts: getEnvNumber('NATS_MAX_RECONNECT', -1),
     },
 
     session: {

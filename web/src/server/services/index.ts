@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-export { healthRoutes } from './health.js';
-export { pageRoutes, setPageRoutesConfig } from './pages.js';
-export { createApiRouter } from './api.js';
-export { createAuthRouter } from './auth.js';
-export { createSseRouter } from './sse.js';
-export { setupWebSocketProxy } from './ws-pty.js';
+export { NatsClient } from './nats-client.js';
+export type { NatsClientConfig, NatsConnectionStatus } from './nats-client.js';
+export { SSEManager } from './sse-manager.js';
+export type { SSEConnection, SSEManagerStats } from './sse-manager.js';

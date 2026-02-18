@@ -27,7 +27,22 @@ import { setupWebSocketProxy } from './routes/index.js';
 // Create the Koa application
 const app = createApp(config);
 
+// Connect to NATS if enabled (async, non-blocking for server startup)
+const { natsClient, sseManager } = app.services;
+
+if (natsClient) {
+  natsClient.connect().then(() => {
+    console.info('[NATS] Ready for SSE subscriptions');
+  }).catch((err) => {
+    console.warn(`[NATS] Failed to connect (server will continue without real-time events): ${err}`);
+  });
+}
+
 // Start the server
+const natsStatus = natsClient
+  ? `enabled (${config.nats.servers.join(', ')})`
+  : 'disabled';
+
 const server = app.listen(config.port, config.host, () => {
   const debugStatus = config.debug ? 'enabled' : 'disabled';
   console.info(`
@@ -38,6 +53,7 @@ const server = app.listen(config.port, config.host, () => {
 ║  Environment: ${config.production ? 'production' : 'development'}                                ║
 ║  Debug mode: ${debugStatus.padEnd(8)}                                       ║
 ║  Hub API: ${config.hubApiUrl.substring(0, 40).padEnd(40)}     ║
+║  NATS: ${natsStatus.substring(0, 43).padEnd(43)}     ║
 ╚════════════════════════════════════════════════════════════╝
   `);
 
@@ -50,8 +66,23 @@ const server = app.listen(config.port, config.host, () => {
 setupWebSocketProxy(server, config);
 
 // Graceful shutdown handling
-function shutdown(signal: string): void {
+async function shutdown(signal: string): Promise<void> {
   console.info(`\n${signal} received. Shutting down gracefully...`);
+
+  // Close SSE connections first
+  if (sseManager) {
+    console.info('[SSE] Closing all connections...');
+    sseManager.closeAll();
+  }
+
+  // Drain NATS before closing server
+  if (natsClient) {
+    try {
+      await natsClient.close();
+    } catch (err) {
+      console.error('[NATS] Error during shutdown:', err);
+    }
+  }
 
   server.close((err) => {
     if (err) {
@@ -70,13 +101,13 @@ function shutdown(signal: string): void {
   }, 10000);
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.on('SIGINT', () => { void shutdown('SIGINT'); });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
-  shutdown('UNCAUGHT_EXCEPTION');
+  void shutdown('UNCAUGHT_EXCEPTION');
 });
 
 // Handle unhandled promise rejections
