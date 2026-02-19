@@ -17,13 +17,8 @@
 /**
  * Client entry point
  *
- * Handles hydration of SSR content, client-side routing, and
- * real-time state management via SSE.
+ * Handles client-side routing and real-time state management via SSE.
  */
-
-// IMPORTANT: Import hydration support BEFORE any Lit components
-// This enables proper hydration of SSR-rendered declarative shadow DOM
-import '@lit-labs/ssr-client/lit-element-hydrate-support.js';
 
 import type { PageData } from '../shared/types.js';
 import { stateManager } from './state.js';
