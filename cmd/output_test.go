@@ -155,6 +155,7 @@ func TestInteractiveOnlyCommands(t *testing.T) {
 		"scion start",
 		"scion stop",
 		"scion delete",
+		"scion look",
 	}
 
 	for _, cmd := range nonInteractiveCmds {
