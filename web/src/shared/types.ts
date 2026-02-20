@@ -87,3 +87,45 @@ export interface Agent {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Runtime Broker status enumeration
+ */
+export type BrokerStatus = 'online' | 'offline' | 'degraded';
+
+/**
+ * Capabilities advertised by a Runtime Broker
+ */
+export interface BrokerCapabilities {
+  webPTY: boolean;
+  sync: boolean;
+  attach: boolean;
+}
+
+/**
+ * Runtime profile available on a broker
+ */
+export interface BrokerProfile {
+  name: string;
+  type: string;
+  available: boolean;
+}
+
+/**
+ * Runtime Broker information from the Hub API
+ */
+export interface RuntimeBroker {
+  id: string;
+  name: string;
+  slug: string;
+  version: string;
+  status: BrokerStatus;
+  connectionState: string;
+  lastHeartbeat: string;
+  capabilities?: BrokerCapabilities;
+  profiles?: BrokerProfile[];
+  autoProvide: boolean;
+  endpoint?: string;
+  createdAt: string;
+  updatedAt: string;
+}

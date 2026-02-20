@@ -44,6 +44,7 @@ import '../components/pages/grove-detail.js';
 import '../components/pages/agents.js';
 import '../components/pages/agent-detail.js';
 import '../components/pages/terminal.js';
+import '../components/pages/brokers.js';
 import '../components/pages/not-found.js';
 import '../components/pages/login.js';
 
@@ -55,6 +56,7 @@ const ROUTES: { pattern: RegExp; tag: string }[] = [
   { pattern: /^\/$/, tag: 'scion-page-home' },
   { pattern: /^\/groves$/, tag: 'scion-page-groves' },
   { pattern: /^\/agents$/, tag: 'scion-page-agents' },
+  { pattern: /^\/brokers$/, tag: 'scion-page-brokers' },
   { pattern: /^\/groves\/[^/]+$/, tag: 'scion-page-grove-detail' },
   { pattern: /^\/agents\/[^/]+\/terminal$/, tag: 'scion-page-terminal' },
   { pattern: /^\/agents\/[^/]+$/, tag: 'scion-page-agent-detail' },
@@ -101,6 +103,7 @@ async function init(): Promise<void> {
     customElements.whenDefined('scion-page-agents'),
     customElements.whenDefined('scion-page-agent-detail'),
     customElements.whenDefined('scion-page-terminal'),
+    customElements.whenDefined('scion-page-brokers'),
     customElements.whenDefined('scion-page-404'),
     customElements.whenDefined('scion-login-page'),
   ]);
