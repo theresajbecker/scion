@@ -688,3 +688,220 @@ func TestBuildAgentEnv_TelemetryNoOverrideExplicit(t *testing.T) {
 		t.Errorf("SCION_TELEMETRY_ENABLED = %q, want %q", got, "true")
 	}
 }
+
+func TestBuildAgentEnv_HubEnvVarsSurviveMerge(t *testing.T) {
+	// Verify that hub env vars injected into opts.Env (from grove settings
+	// or dev token resolution) survive the buildAgentEnv merge.
+	scionCfg := &api.ScionConfig{}
+	extraEnv := map[string]string{
+		"SCION_HUB_ENDPOINT":          "http://localhost:9810",
+		"SCION_HUB_URL":              "http://localhost:9810",
+		"SCION_SERVER_AUTH_DEV_TOKEN": "scion-dev-test-token-123",
+		"SCION_AGENT_NAME":           "test-agent",
+	}
+
+	env, _ := buildAgentEnv(scionCfg, extraEnv)
+
+	envMap := make(map[string]string)
+	for _, e := range env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	expected := map[string]string{
+		"SCION_HUB_ENDPOINT":          "http://localhost:9810",
+		"SCION_HUB_URL":              "http://localhost:9810",
+		"SCION_SERVER_AUTH_DEV_TOKEN": "scion-dev-test-token-123",
+		"SCION_AGENT_NAME":           "test-agent",
+	}
+	for k, want := range expected {
+		got, ok := envMap[k]
+		if !ok {
+			t.Errorf("missing env var %s", k)
+			continue
+		}
+		if got != want {
+			t.Errorf("%s = %q, want %q", k, got, want)
+		}
+	}
+}
+
+func TestStartInjectsHubEnvFromGroveSettings(t *testing.T) {
+	// When grove settings have hub enabled with an endpoint, Start() should
+	// inject SCION_HUB_ENDPOINT and SCION_HUB_URL into the container env.
+	tmpDir := t.TempDir()
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldWd)
+
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Clear dev token env vars so we control the test
+	for _, k := range []string{"SCION_DEV_TOKEN", "SCION_SERVER_AUTH_DEV_TOKEN", "SCION_DEV_TOKEN_FILE"} {
+		if old, ok := os.LookupEnv(k); ok {
+			defer os.Setenv(k, old)
+			os.Unsetenv(k)
+		}
+	}
+
+	globalScionDir := filepath.Join(tmpDir, ".scion")
+
+	// Create harness-config
+	hcDir := filepath.Join(globalScionDir, "harness-configs", "test-harness")
+	os.MkdirAll(hcDir, 0755)
+	os.WriteFile(filepath.Join(hcDir, "config.yaml"), []byte("harness: gemini\nuser: scion\nimage: test-image:latest\n"), 0644)
+
+	// Create a minimal template
+	tplDir := filepath.Join(globalScionDir, "templates", "default")
+	os.MkdirAll(tplDir, 0755)
+	os.WriteFile(filepath.Join(tplDir, "scion-agent.json"), []byte(`{"default_harness_config": "test-harness"}`), 0644)
+
+	// Global settings
+	os.WriteFile(filepath.Join(globalScionDir, "settings.yaml"), []byte(`schema_version: "1"
+active_profile: local
+profiles:
+  local:
+    runtime: docker
+`), 0644)
+
+	// Create project grove with hub-enabled settings
+	projectDir := filepath.Join(tmpDir, "project")
+	projectScionDir := filepath.Join(projectDir, ".scion")
+	os.MkdirAll(projectScionDir, 0755)
+	os.WriteFile(filepath.Join(projectScionDir, "settings.yaml"), []byte(`hub:
+  enabled: true
+  endpoint: "http://localhost:9810"
+`), 0644)
+
+	// Write a dev-token file so the token resolution finds it
+	os.WriteFile(filepath.Join(globalScionDir, "dev-token"), []byte("scion-dev-test-token-abc"), 0644)
+
+	// Capture the RunConfig
+	var capturedConfig runtime.RunConfig
+	mockRT := &runtime.MockRuntime{
+		ListFunc: func(ctx context.Context, labelFilter map[string]string) ([]api.AgentInfo, error) {
+			return []api.AgentInfo{}, nil
+		},
+		RunFunc: func(ctx context.Context, cfg runtime.RunConfig) (string, error) {
+			capturedConfig = cfg
+			return "mock-id", nil
+		},
+	}
+
+	mgr := NewManager(mockRT)
+
+	_, err := mgr.Start(context.Background(), api.StartOptions{
+		Name:      "test-agent",
+		GrovePath: projectScionDir,
+		NoAuth:    true,
+	})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Convert env slice to map
+	envMap := make(map[string]string)
+	for _, e := range capturedConfig.Env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	if got := envMap["SCION_HUB_ENDPOINT"]; got != "http://localhost:9810" {
+		t.Errorf("SCION_HUB_ENDPOINT = %q, want %q", got, "http://localhost:9810")
+	}
+	if got := envMap["SCION_HUB_URL"]; got != "http://localhost:9810" {
+		t.Errorf("SCION_HUB_URL = %q, want %q", got, "http://localhost:9810")
+	}
+	if got := envMap["SCION_SERVER_AUTH_DEV_TOKEN"]; got != "scion-dev-test-token-abc" {
+		t.Errorf("SCION_SERVER_AUTH_DEV_TOKEN = %q, want %q", got, "scion-dev-test-token-abc")
+	}
+}
+
+func TestStartPreservesExplicitHubEndpoint(t *testing.T) {
+	// When hub endpoint is already set in opts.Env (e.g. from broker dispatch),
+	// grove settings should NOT override it.
+	tmpDir := t.TempDir()
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldWd)
+
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	globalScionDir := filepath.Join(tmpDir, ".scion")
+
+	// Create harness-config
+	hcDir := filepath.Join(globalScionDir, "harness-configs", "test-harness")
+	os.MkdirAll(hcDir, 0755)
+	os.WriteFile(filepath.Join(hcDir, "config.yaml"), []byte("harness: gemini\nuser: scion\nimage: test-image:latest\n"), 0644)
+
+	// Create a minimal template
+	tplDir := filepath.Join(globalScionDir, "templates", "default")
+	os.MkdirAll(tplDir, 0755)
+	os.WriteFile(filepath.Join(tplDir, "scion-agent.json"), []byte(`{"default_harness_config": "test-harness"}`), 0644)
+
+	// Global settings
+	os.WriteFile(filepath.Join(globalScionDir, "settings.yaml"), []byte(`schema_version: "1"
+active_profile: local
+profiles:
+  local:
+    runtime: docker
+`), 0644)
+
+	// Create project grove with hub-enabled settings (different endpoint)
+	projectDir := filepath.Join(tmpDir, "project")
+	projectScionDir := filepath.Join(projectDir, ".scion")
+	os.MkdirAll(projectScionDir, 0755)
+	os.WriteFile(filepath.Join(projectScionDir, "settings.yaml"), []byte(`hub:
+  enabled: true
+  endpoint: "http://grove-setting:9810"
+`), 0644)
+
+	// Capture the RunConfig
+	var capturedConfig runtime.RunConfig
+	mockRT := &runtime.MockRuntime{
+		ListFunc: func(ctx context.Context, labelFilter map[string]string) ([]api.AgentInfo, error) {
+			return []api.AgentInfo{}, nil
+		},
+		RunFunc: func(ctx context.Context, cfg runtime.RunConfig) (string, error) {
+			capturedConfig = cfg
+			return "mock-id", nil
+		},
+	}
+
+	mgr := NewManager(mockRT)
+
+	_, err := mgr.Start(context.Background(), api.StartOptions{
+		Name:      "test-agent",
+		GrovePath: projectScionDir,
+		NoAuth:    true,
+		Env: map[string]string{
+			"SCION_HUB_ENDPOINT": "http://broker-dispatch:9810",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	envMap := make(map[string]string)
+	for _, e := range capturedConfig.Env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	// Broker-dispatched endpoint should be preserved, not overwritten by grove settings
+	if got := envMap["SCION_HUB_ENDPOINT"]; got != "http://broker-dispatch:9810" {
+		t.Errorf("SCION_HUB_ENDPOINT = %q, want %q (explicit should win over grove settings)", got, "http://broker-dispatch:9810")
+	}
+}

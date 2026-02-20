@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/harness"
 	"github.com/ptone/scion-agent/pkg/runtime"
@@ -278,6 +279,29 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		if finalScionCfg.Hub != nil && finalScionCfg.Hub.Endpoint != "" {
 			opts.Env["SCION_HUB_ENDPOINT"] = finalScionCfg.Hub.Endpoint
 			opts.Env["SCION_HUB_URL"] = finalScionCfg.Hub.Endpoint
+		}
+	}
+
+	// If hub endpoint not yet set from agent config or caller's opts.Env,
+	// check grove settings so locally-started agents in hub-connected
+	// groves also get hub connectivity.
+	if _, hubSet := opts.Env["SCION_HUB_ENDPOINT"]; !hubSet {
+		if groveSettings, err := config.LoadSettings(projectDir); err == nil {
+			if groveSettings.IsHubEnabled() {
+				if ep := groveSettings.GetHubEndpoint(); ep != "" {
+					opts.Env["SCION_HUB_ENDPOINT"] = ep
+					opts.Env["SCION_HUB_URL"] = ep
+				}
+			}
+		}
+	}
+	// If hub endpoint is now set but no auth token, resolve dev auth token
+	// from the host filesystem (env vars or ~/.scion/dev-token file).
+	if _, ok := opts.Env["SCION_HUB_ENDPOINT"]; ok {
+		if _, tokenSet := opts.Env["SCION_SERVER_AUTH_DEV_TOKEN"]; !tokenSet {
+			if token := apiclient.ResolveDevToken(); token != "" {
+				opts.Env["SCION_SERVER_AUTH_DEV_TOKEN"] = token
+			}
 		}
 	}
 

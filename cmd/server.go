@@ -500,6 +500,20 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		// Auto-compute hub endpoint when running in combo mode (hub enabled)
+		// and no explicit endpoint was configured. This ensures the Hub
+		// dispatcher always has a proper endpoint to send to brokers/agents.
+		if hubEndpoint == "" && enableHub {
+			port := cfg.Hub.Port
+			if enableWeb {
+				port = webPort
+			}
+			hubEndpoint = fmt.Sprintf("http://localhost:%d", port)
+			if enableDebug {
+				log.Printf("Auto-computed hub endpoint for dispatcher: %s", hubEndpoint)
+			}
+		}
+
 		// Create Hub server configuration
 		hubCfg := hub.ServerConfig{
 			Port:               cfg.Hub.Port,
