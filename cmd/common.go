@@ -472,6 +472,21 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		}
 	}
 
+	// Debug: log the env vars being sent with the create request
+	if debugMode {
+		util.Debugf("[env-gather] startAgentViaHub: building create request for agent %q", agentName)
+		util.Debugf("[env-gather] startAgentViaHub: template=%q, broker=%q", resolvedTemplate, runtimeBrokerID)
+		if req.Config != nil && len(req.Config.Env) > 0 {
+			util.Debugf("[env-gather] startAgentViaHub: CLI is sending %d env var(s) in request config:", len(req.Config.Env))
+			for k := range req.Config.Env {
+				util.Debugf("[env-gather]   config env key: %s", k)
+			}
+		} else {
+			util.Debugf("[env-gather] startAgentViaHub: no env vars in request config (Hub/Broker must supply all)")
+		}
+		util.Debugf("[env-gather] startAgentViaHub: NOTE — env-gather flow (CLI fallback for missing broker env) is not yet implemented; CLI will not be asked to provide env vars")
+	}
+
 	// Detect non-git grove for workspace bootstrap
 	var workspaceFiles []transfer.FileInfo
 	if hubCtx.GrovePath != "" {
@@ -501,7 +516,29 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 
 	resp, err := createAgentWithBrokerResolution(ctx, hubCtx, groveID, req)
 	if err != nil {
+		if debugMode {
+			util.Debugf("[env-gather] startAgentViaHub: create request failed: %v", err)
+		}
 		return wrapHubError(fmt.Errorf("failed to start agent via Hub: %w", err))
+	}
+
+	// Debug: log the response from Hub
+	if debugMode {
+		util.Debugf("[env-gather] startAgentViaHub: Hub returned successfully")
+		if resp.Agent != nil {
+			util.Debugf("[env-gather]   agent id=%s slug=%s status=%s", resp.Agent.ID, resp.Agent.Slug, resp.Agent.Status)
+			if resp.Agent.RuntimeBrokerName != "" {
+				util.Debugf("[env-gather]   broker=%s (id=%s)", resp.Agent.RuntimeBrokerName, resp.Agent.RuntimeBrokerID)
+			}
+		}
+		if len(resp.Warnings) > 0 {
+			util.Debugf("[env-gather]   warnings from Hub: %v", resp.Warnings)
+		}
+		// NOTE: The design calls for HTTP 202 with EnvGatherResponse when the
+		// broker/hub can't satisfy all required env vars, but this is not yet
+		// implemented. The Hub always returns 200/201 with the agent created
+		// immediately. No env-gather round-trip back to CLI occurs.
+		util.Debugf("[env-gather] startAgentViaHub: env-gather phase did NOT occur (not implemented) — agent was dispatched directly to broker without CLI env fallback")
 	}
 
 	// Advance watermark to the hub-assigned creation time so this agent
@@ -678,13 +715,29 @@ ready:
 
 func createAgentWithBrokerResolution(ctx context.Context, hubCtx *HubContext, groveID string, req *hubclient.CreateAgentRequest) (*hubclient.CreateAgentResponse, error) {
 	for {
+		if debugMode {
+			util.Debugf("[env-gather] createAgentWithBrokerResolution: sending create request to Hub (grove=%s, agent=%s, broker=%s)", groveID, req.Name, req.RuntimeBrokerID)
+			if req.Config != nil && len(req.Config.Env) > 0 {
+				for k := range req.Config.Env {
+					util.Debugf("[env-gather]   request env key: %s", k)
+				}
+			}
+		}
+
 		resp, err := hubCtx.Client.GroveAgents(groveID).Create(ctx, req)
 		if err == nil {
+			if debugMode {
+				util.Debugf("[env-gather] createAgentWithBrokerResolution: Hub returned success (HTTP 200/201)")
+				util.Debugf("[env-gather]   no HTTP 202 env-gather response — broker/hub handled all env vars (or env-gather not implemented)")
+			}
 			return resp, nil
 		}
 
 		var apiErr *apiclient.APIError
 		if !errors.As(err, &apiErr) || apiErr.Code != "no_runtime_broker" {
+			if debugMode {
+				util.Debugf("[env-gather] createAgentWithBrokerResolution: Hub returned error: %v", err)
+			}
 			return nil, err
 		}
 

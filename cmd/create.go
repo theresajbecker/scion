@@ -26,6 +26,7 @@ import (
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/hubsync"
 	"github.com/ptone/scion-agent/pkg/runtime"
+	"github.com/ptone/scion-agent/pkg/util"
 	"github.com/spf13/cobra"
 )
 
@@ -150,6 +151,11 @@ func createAgentViaHub(hubCtx *HubContext, agentName string, task string) error 
 		req.Config = &hubclient.AgentConfig{
 			Image: agentImage,
 		}
+	}
+
+	if debugMode {
+		util.Debugf("[env-gather] createAgentViaHub: provision-only create for agent %q (template=%q, broker=%q)", agentName, resolvedTemplate, runtimeBrokerID)
+		util.Debugf("[env-gather] createAgentViaHub: no env vars sent — create (provision-only) does not trigger env-gather flow")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
