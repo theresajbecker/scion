@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -66,4 +67,56 @@ func TestBuildLookCmd(t *testing.T) {
 				"expected shell command to contain tmux socket discovery")
 		})
 	}
+}
+
+func TestPrintLookOutput_NonInteractive(t *testing.T) {
+	// Save and restore global state.
+	origNonInteractive := nonInteractive
+	defer func() { nonInteractive = origNonInteractive }()
+	nonInteractive = true
+
+	// Capture stdout.
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printLookOutput("hello world\n")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	got := string(buf[:n])
+
+	// Non-interactive: output should be printed verbatim with no border.
+	assert.Equal(t, "hello world\n", got)
+	assert.NotContains(t, got, "⌄")
+	assert.NotContains(t, got, "^")
+}
+
+func TestPrintLookOutput_FallbackWhenNotTerminal(t *testing.T) {
+	// In test environment, stdout is a pipe so term.GetSize will fail,
+	// which exercises the fallback (no border) path.
+	origNonInteractive := nonInteractive
+	defer func() { nonInteractive = origNonInteractive }()
+	nonInteractive = false
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printLookOutput("some output\n")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	got := string(buf[:n])
+
+	// Fallback: no border because stdout is not a terminal.
+	assert.Equal(t, "some output\n", got)
+	assert.NotContains(t, got, "⌄")
+	assert.NotContains(t, got, "^")
 }

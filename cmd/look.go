@@ -17,11 +17,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
 	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -79,9 +82,35 @@ var lookCmd = &cobra.Command{
 			return fmt.Errorf("failed to capture terminal output for agent '%s': %w", agentName, err)
 		}
 
-		fmt.Print(output)
+		printLookOutput(output)
 		return nil
 	},
+}
+
+// printLookOutput prints the captured terminal output, optionally wrapped
+// with top/bottom borders sized to the current terminal width.
+func printLookOutput(output string) {
+	if IsNonInteractive() {
+		fmt.Print(output)
+		return
+	}
+
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || width <= 0 {
+		// Fallback: no border when we can't determine terminal width.
+		fmt.Print(output)
+		return
+	}
+
+	border := func(ch string) string {
+		return strings.Repeat(ch, width)
+	}
+
+	fmt.Println(border("⌄"))
+	fmt.Println()
+	fmt.Print(output)
+	fmt.Println()
+	fmt.Println(border("^"))
 }
 
 func lookViaHub(hubCtx *HubContext, agentName string, execCmd []string) error {
@@ -100,7 +129,7 @@ func lookViaHub(hubCtx *HubContext, agentName string, execCmd []string) error {
 		return wrapHubError(fmt.Errorf("failed to capture terminal output for agent '%s': %w", agentName, err))
 	}
 
-	fmt.Print(resp.Output)
+	printLookOutput(resp.Output)
 	return nil
 }
 
