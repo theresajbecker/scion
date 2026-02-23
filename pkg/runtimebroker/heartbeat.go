@@ -50,11 +50,12 @@ func DefaultHeartbeatConfig() HeartbeatConfig {
 
 // HeartbeatService sends periodic heartbeats to the Hub.
 type HeartbeatService struct {
-	client   hubclient.RuntimeBrokerService
-	brokerID   string
-	interval time.Duration
-	manager  agent.Manager
-	version  string
+	client      hubclient.RuntimeBrokerService
+	brokerID    string
+	interval    time.Duration
+	manager     agent.Manager
+	version     string
+	groveFilter func(groveID string) bool // returns true if this grove belongs to this hub
 
 	mu     sync.Mutex
 	stopCh chan struct{}
@@ -64,16 +65,18 @@ type HeartbeatService struct {
 // NewHeartbeatService creates a new heartbeat service.
 // The client must be an authenticated hubclient.RuntimeBrokerService.
 // The manager is used to gather agent status information.
-func NewHeartbeatService(client hubclient.RuntimeBrokerService, brokerID string, interval time.Duration, manager agent.Manager) *HeartbeatService {
+// The groveFilter, if non-nil, restricts which groves are included in heartbeats.
+func NewHeartbeatService(client hubclient.RuntimeBrokerService, brokerID string, interval time.Duration, manager agent.Manager, groveFilter func(string) bool) *HeartbeatService {
 	if interval < MinHeartbeatInterval {
 		interval = MinHeartbeatInterval
 	}
 
 	return &HeartbeatService{
-		client:   client,
-		brokerID:   brokerID,
-		interval: interval,
-		manager:  manager,
+		client:      client,
+		brokerID:    brokerID,
+		interval:    interval,
+		manager:     manager,
+		groveFilter: groveFilter,
 	}
 }
 
@@ -212,9 +215,12 @@ func (s *HeartbeatService) gatherGroveAgents() []hubclient.GroveHeartbeat {
 		groveMap[groveID] = append(groveMap[groveID], agentHB)
 	}
 
-	// Convert to slice
+	// Convert to slice, applying grove filter
 	var groves []hubclient.GroveHeartbeat
 	for groveID, agentList := range groveMap {
+		if s.groveFilter != nil && !s.groveFilter(groveID) {
+			continue
+		}
 		groves = append(groves, hubclient.GroveHeartbeat{
 			GroveID:    groveID,
 			AgentCount: len(agentList),

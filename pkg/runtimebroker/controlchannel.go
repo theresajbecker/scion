@@ -82,12 +82,13 @@ type AgentLookup interface {
 
 // ControlChannelClient manages the WebSocket connection to the Hub.
 type ControlChannelClient struct {
-	config      ControlChannelConfig
-	conn        *wsprotocol.Connection
-	handlers    http.Handler  // Reuse existing HTTP handlers
-	agentLookup AgentLookup   // For looking up agent container IDs
-	streams     map[string]*StreamHandler
-	streamMu    sync.RWMutex
+	config         ControlChannelConfig
+	conn           *wsprotocol.Connection
+	handlers       http.Handler  // Reuse existing HTTP handlers
+	agentLookup    AgentLookup   // For looking up agent container IDs
+	connectionName string        // identifies which HubConnection this belongs to
+	streams        map[string]*StreamHandler
+	streamMu       sync.RWMutex
 
 	// Connection state
 	connected   bool
@@ -114,12 +115,15 @@ type StreamHandler struct {
 }
 
 // NewControlChannelClient creates a new control channel client.
-func NewControlChannelClient(config ControlChannelConfig, handlers http.Handler, agentLookup AgentLookup) *ControlChannelClient {
+// The connectionName identifies which HubConnection this control channel belongs to,
+// enabling request routing to the correct hydrator in multi-hub mode.
+func NewControlChannelClient(config ControlChannelConfig, handlers http.Handler, agentLookup AgentLookup, connectionName string) *ControlChannelClient {
 	return &ControlChannelClient{
-		config:      config,
-		handlers:    handlers,
-		agentLookup: agentLookup,
-		streams:     make(map[string]*StreamHandler),
+		config:         config,
+		handlers:       handlers,
+		agentLookup:    agentLookup,
+		connectionName: connectionName,
+		streams:        make(map[string]*StreamHandler),
 	}
 }
 
@@ -446,6 +450,11 @@ func (c *ControlChannelClient) handleRequest(data []byte) error {
 	httpReq := httptest.NewRequest(req.Method, path, body)
 	for key, value := range req.Headers {
 		httpReq.Header.Set(key, value)
+	}
+
+	// Inject connection name header so the server can route to the correct hydrator
+	if c.connectionName != "" {
+		httpReq.Header.Set("X-Scion-Hub-Connection", c.connectionName)
 	}
 
 	// Execute through existing handlers

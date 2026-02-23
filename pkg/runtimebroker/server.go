@@ -32,6 +32,7 @@ import (
 
 	"github.com/ptone/scion-agent/pkg/agent"
 	"github.com/ptone/scion-agent/pkg/brokercredentials"
+	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/ptone/scion-agent/pkg/templatecache"
@@ -147,23 +148,20 @@ type Server struct {
 	startTime  time.Time
 	version    string
 
-	// Hub integration
-	hubClient hubclient.Client
-	cache     *templatecache.Cache
-	hydrator  *templatecache.Hydrator
+	// Hub connections (replaces single hubClient, heartbeat, controlChannel, etc.)
+	hubConnections map[string]*HubConnection // keyed by connection name
+	hubMu          sync.RWMutex
 
-	// Authentication and heartbeat
-	brokerAuthMiddleware *BrokerAuthMiddleware
-	heartbeat          *HeartbeatService
-	brokerCredentials    *brokercredentials.BrokerCredentials
+	// Shared template cache (content-addressed, hub-neutral)
+	cache *templatecache.Cache
 
-	// Credential watching
-	credentialsStore   *brokercredentials.Store
-	credentialsModTime time.Time
-	credWatcherStop    chan struct{}
+	// Multi-key auth middleware
+	brokerAuthMiddleware *MultiKeyBrokerAuthMiddleware
 
-	// Control channel
-	controlChannel *ControlChannelClient
+	// Credential watching (watches MultiStore directory)
+	multiCredStore  *brokercredentials.MultiStore
+	credLastScan    time.Time
+	credWatcherStop chan struct{}
 
 	// Pending env-gather state: agents waiting for env var submission.
 	// Keyed by agent name (used as agent identifier on the broker).
@@ -181,17 +179,18 @@ type pendingAgentState struct {
 // New creates a new Runtime Broker API server.
 func New(cfg ServerConfig, mgr agent.Manager, rt runtime.Runtime) *Server {
 	srv := &Server{
-		config:           cfg,
-		manager:          mgr,
-		runtime:          rt,
-		mux:              http.NewServeMux(),
-		startTime:        time.Now(),
-		version:          "0.1.0", // TODO: Get from build info
+		config:         cfg,
+		manager:        mgr,
+		runtime:        rt,
+		mux:            http.NewServeMux(),
+		startTime:      time.Now(),
+		version:        "0.1.0", // TODO: Get from build info
+		hubConnections: make(map[string]*HubConnection),
 		pendingEnvGather: make(map[string]*pendingAgentState),
 	}
 
 	// Initialize Hub integration if enabled
-	if cfg.HubEnabled && cfg.HubEndpoint != "" {
+	if cfg.HubEnabled && (cfg.HubEndpoint != "" || cfg.InMemoryCredentials != nil) {
 		if err := srv.initHubIntegration(); err != nil {
 			slog.Warn("Failed to initialize Hub integration", "error", err)
 		}
@@ -202,9 +201,9 @@ func New(cfg ServerConfig, mgr agent.Manager, rt runtime.Runtime) *Server {
 	return srv
 }
 
-// initHubIntegration initializes the Hub client, template cache, and hydrator.
+// initHubIntegration initializes the shared template cache and hub connections.
 func (s *Server) initHubIntegration() error {
-	// Determine cache directory
+	// 1. Initialize shared template cache
 	cacheDir := s.config.TemplateCacheDir
 	if cacheDir == "" {
 		homeDir, err := os.UserHomeDir()
@@ -214,77 +213,99 @@ func (s *Server) initHubIntegration() error {
 		cacheDir = filepath.Join(homeDir, ".scion", "cache", "templates")
 	}
 
-	// Determine cache max size
 	maxSize := s.config.TemplateCacheMaxSize
 	if maxSize <= 0 {
 		maxSize = templatecache.DefaultMaxSize
 	}
 
-	// Initialize template cache
 	cache, err := templatecache.New(cacheDir, maxSize)
 	if err != nil {
 		return fmt.Errorf("failed to initialize template cache: %w", err)
 	}
 	s.cache = cache
 
-	// Try to load broker credentials for HMAC auth
-	var secretKey []byte
-	if err := s.loadBrokerCredentials(); err == nil && s.brokerCredentials != nil {
-		// Decode the secret key
-		secretKey, err = base64.StdEncoding.DecodeString(s.brokerCredentials.SecretKey)
+	// 2. Initialize hub connections map (already done in New)
+
+	// 3. Handle InMemoryCredentials -> "local" connection
+	if s.config.InMemoryCredentials != nil {
+		creds := s.config.InMemoryCredentials
+		if creds.Name == "" {
+			creds.Name = "local"
+		}
+		conn, err := s.createHubConnection(creds.Name, creds)
 		if err != nil {
-			slog.Warn("Failed to decode broker secret key", "error", err)
-		}
-	}
-
-	// Initialize Hub client with appropriate auth
-	opts := []hubclient.Option{}
-
-	if len(secretKey) > 0 && s.brokerCredentials != nil {
-		// Use HMAC auth from credentials
-		opts = append(opts, hubclient.WithHMACAuth(s.brokerCredentials.BrokerID, secretKey))
-		slog.Info("Hub client using HMAC authentication", "brokerID", s.brokerCredentials.BrokerID)
-
-		// Update BrokerID from credentials if not already set
-		if s.config.BrokerID == "" {
-			s.config.BrokerID = s.brokerCredentials.BrokerID
-		}
-	} else if s.config.HubToken != "" {
-		// Fall back to bearer token
-		opts = append(opts, hubclient.WithBearerToken(s.config.HubToken))
-		slog.Info("Hub client using bearer token authentication")
-	} else {
-		// Try auto dev auth
-		opts = append(opts, hubclient.WithAutoDevAuth())
-		slog.Info("Hub client using auto dev authentication")
-	}
-
-	client, err := hubclient.New(s.config.HubEndpoint, opts...)
-	if err != nil {
-		return fmt.Errorf("failed to create Hub client: %w", err)
-	}
-	s.hubClient = client
-
-	// Initialize hydrator
-	s.hydrator = templatecache.NewHydrator(s.cache, s.hubClient)
-
-	// Set up broker auth middleware if enabled and we have credentials
-	if s.config.BrokerAuthEnabled && len(secretKey) > 0 {
-		s.brokerAuthMiddleware = NewBrokerAuthMiddleware(BrokerAuthConfig{
-			Enabled:              true,
-			MaxClockSkew:         5 * time.Minute,
-			SecretKey:            secretKey,
-			AllowUnauthenticated: !s.config.BrokerAuthStrictMode, // Configurable strict mode
-		})
-		if s.config.BrokerAuthStrictMode {
-			slog.Info("Broker auth middleware enabled (strict mode)")
+			slog.Warn("Failed to create local hub connection", "error", err)
 		} else {
-			slog.Info("Broker auth middleware enabled (permissive mode)")
+			s.hubMu.Lock()
+			s.hubConnections[creds.Name] = conn
+			s.hubMu.Unlock()
+			slog.Info("Created local hub connection (co-located mode)", "name", creds.Name, "brokerID", creds.BrokerID)
 		}
+	}
+
+	// 4. Load MultiStore credentials
+	s.multiCredStore = brokercredentials.NewMultiStore("")
+	multiCreds, err := s.multiCredStore.List()
+	if err != nil {
+		slog.Warn("Failed to list multi-store credentials", "error", err)
+	}
+
+	for i := range multiCreds {
+		c := &multiCreds[i]
+		// Skip if already handled by InMemoryCredentials
+		if _, exists := s.hubConnections[c.Name]; exists {
+			continue
+		}
+		conn, err := s.createHubConnection(c.Name, c)
+		if err != nil {
+			slog.Warn("Failed to create hub connection", "name", c.Name, "error", err)
+			continue
+		}
+		s.hubMu.Lock()
+		s.hubConnections[c.Name] = conn
+		s.hubMu.Unlock()
+		slog.Info("Created hub connection from multi-store", "name", c.Name, "brokerID", c.BrokerID)
+	}
+
+	// 5. Legacy fallback: if no connections yet (except possibly "local"),
+	// try loading from the legacy single-file Store
+	if len(s.hubConnections) == 0 || (len(s.hubConnections) == 1 && s.config.InMemoryCredentials != nil) {
+		s.tryLegacyCredentials()
+	}
+
+	// If we still have no connections, try creating one from config (bearer/dev-auth)
+	if len(s.hubConnections) == 0 && s.config.HubEndpoint != "" {
+		conn, err := s.createHubConnectionFromConfig()
+		if err != nil {
+			slog.Warn("Failed to create hub connection from config", "error", err)
+		} else {
+			name := brokercredentials.DeriveHubName(s.config.HubEndpoint)
+			if name == "" {
+				name = "default"
+			}
+			s.hubMu.Lock()
+			s.hubConnections[name] = conn
+			s.hubMu.Unlock()
+		}
+	}
+
+	// 6. Build multi-key auth middleware from all connections' secret keys
+	s.buildAuthMiddleware()
+
+	// Update BrokerID from first connection if not already set
+	if s.config.BrokerID == "" {
+		s.hubMu.RLock()
+		for _, conn := range s.hubConnections {
+			if conn.BrokerID != "" {
+				s.config.BrokerID = conn.BrokerID
+				break
+			}
+		}
+		s.hubMu.RUnlock()
 	}
 
 	slog.Info("Hub integration initialized",
-		"endpoint", s.config.HubEndpoint,
+		"connections", len(s.hubConnections),
 		"cache", cacheDir,
 		"max_size_mb", maxSize/(1024*1024),
 	)
@@ -292,44 +313,207 @@ func (s *Server) initHubIntegration() error {
 	return nil
 }
 
-// loadBrokerCredentials attempts to load broker credentials.
-// Priority: InMemoryCredentials (co-located mode) > BrokerCredentialsPath > default path
-func (s *Server) loadBrokerCredentials() error {
-	// Check for in-memory credentials first (used in co-located Hub+RuntimeBroker mode)
-	if s.config.InMemoryCredentials != nil {
-		s.brokerCredentials = s.config.InMemoryCredentials
-		slog.Info("Using in-memory broker credentials (co-located mode)", "brokerID", s.brokerCredentials.BrokerID)
-		return nil
+// createHubConnection creates a HubConnection from credentials.
+func (s *Server) createHubConnection(name string, creds *brokercredentials.BrokerCredentials) (*HubConnection, error) {
+	// Decode secret key
+	var secretKey []byte
+	if creds.SecretKey != "" {
+		var err error
+		secretKey, err = base64.StdEncoding.DecodeString(creds.SecretKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode secret key: %w", err)
+		}
 	}
 
-	// Fall back to file-based credentials
+	// Determine hub endpoint
+	hubEndpoint := creds.HubEndpoint
+	if hubEndpoint == "" {
+		hubEndpoint = s.config.HubEndpoint
+	}
+
+	// Build hub client options
+	opts := buildHubClientOpts(creds, secretKey)
+	client, err := hubclient.New(hubEndpoint, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Hub client: %w", err)
+	}
+
+	// Create hydrator using shared cache
+	var hydrator *templatecache.Hydrator
+	if s.cache != nil {
+		hydrator = templatecache.NewHydrator(s.cache, client)
+	}
+
+	conn := &HubConnection{
+		Name:        name,
+		HubEndpoint: hubEndpoint,
+		BrokerID:    creds.BrokerID,
+		AuthMode:    creds.AuthMode,
+		Credentials: creds,
+		SecretKey:   secretKey,
+		HubClient:   client,
+		Hydrator:    hydrator,
+		Status:      ConnectionStatusDisconnected,
+	}
+
+	return conn, nil
+}
+
+// createHubConnectionFromConfig creates a HubConnection from server config
+// (bearer token or dev-auth), without file-based credentials.
+func (s *Server) createHubConnectionFromConfig() (*HubConnection, error) {
+	var opts []hubclient.Option
+
+	if s.config.HubToken != "" {
+		opts = append(opts, hubclient.WithBearerToken(s.config.HubToken))
+		slog.Info("Hub client using bearer token authentication")
+	} else {
+		opts = append(opts, hubclient.WithAutoDevAuth())
+		slog.Info("Hub client using auto dev authentication")
+	}
+
+	client, err := hubclient.New(s.config.HubEndpoint, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Hub client: %w", err)
+	}
+
+	var hydrator *templatecache.Hydrator
+	if s.cache != nil {
+		hydrator = templatecache.NewHydrator(s.cache, client)
+	}
+
+	conn := &HubConnection{
+		Name:        "default",
+		HubEndpoint: s.config.HubEndpoint,
+		BrokerID:    s.config.BrokerID,
+		HubClient:   client,
+		Hydrator:    hydrator,
+		Status:      ConnectionStatusDisconnected,
+	}
+
+	return conn, nil
+}
+
+// tryLegacyCredentials attempts to load from legacy single-file Store
+// and migrate to the MultiStore.
+func (s *Server) tryLegacyCredentials() {
 	credPath := s.config.BrokerCredentialsPath
 	if credPath == "" {
 		credPath = brokercredentials.DefaultPath()
 	}
 
-	s.credentialsStore = brokercredentials.NewStore(credPath)
-	if !s.credentialsStore.Exists() {
-		return nil // No credentials file, not an error
+	legacyStore := brokercredentials.NewStore(credPath)
+	if !legacyStore.Exists() {
+		return
 	}
 
-	creds, err := s.credentialsStore.Load()
+	slog.Info("Found legacy credentials file, migrating to multi-store", "path", credPath)
+
+	// Migrate
+	if err := s.multiCredStore.MigrateFromLegacy(credPath); err != nil {
+		slog.Warn("Failed to migrate legacy credentials", "error", err)
+
+		// Still try to load directly
+		creds, err := legacyStore.Load()
+		if err != nil {
+			slog.Warn("Failed to load legacy credentials", "error", err)
+			return
+		}
+
+		name := brokercredentials.DeriveHubName(creds.HubEndpoint)
+		if name == "" {
+			name = "default"
+		}
+		creds.Name = name
+
+		conn, err := s.createHubConnection(name, creds)
+		if err != nil {
+			slog.Warn("Failed to create hub connection from legacy credentials", "error", err)
+			return
+		}
+		s.hubMu.Lock()
+		s.hubConnections[name] = conn
+		s.hubMu.Unlock()
+		return
+	}
+
+	// Reload from multi-store after migration
+	multiCreds, err := s.multiCredStore.List()
 	if err != nil {
-		return fmt.Errorf("failed to load broker credentials: %w", err)
+		slog.Warn("Failed to list credentials after migration", "error", err)
+		return
 	}
 
-	s.brokerCredentials = creds
-	s.credentialsModTime = s.credentialsStore.ModTime()
-	slog.Info("Broker credentials loaded", "brokerID", creds.BrokerID, "hub", creds.HubEndpoint)
-	return nil
+	for i := range multiCreds {
+		c := &multiCreds[i]
+		if _, exists := s.hubConnections[c.Name]; exists {
+			continue
+		}
+		conn, err := s.createHubConnection(c.Name, c)
+		if err != nil {
+			slog.Warn("Failed to create hub connection after migration", "name", c.Name, "error", err)
+			continue
+		}
+		s.hubMu.Lock()
+		s.hubConnections[c.Name] = conn
+		s.hubMu.Unlock()
+		slog.Info("Created hub connection from migrated credentials", "name", c.Name, "brokerID", c.BrokerID)
+	}
+}
+
+// buildAuthMiddleware creates or rebuilds the multi-key auth middleware
+// from all hub connections' secret keys.
+func (s *Server) buildAuthMiddleware() {
+	s.hubMu.RLock()
+	var keys []secretKeyEntry
+	for _, conn := range s.hubConnections {
+		if len(conn.SecretKey) > 0 {
+			keys = append(keys, secretKeyEntry{
+				hubName:   conn.Name,
+				secretKey: conn.SecretKey,
+			})
+		}
+	}
+	s.hubMu.RUnlock()
+
+	if !s.config.BrokerAuthEnabled || len(keys) == 0 {
+		return
+	}
+
+	if s.brokerAuthMiddleware == nil {
+		s.brokerAuthMiddleware = NewMultiKeyBrokerAuthMiddleware(
+			true,
+			5*time.Minute,
+			!s.config.BrokerAuthStrictMode,
+		)
+		if s.config.BrokerAuthStrictMode {
+			slog.Info("Broker auth middleware enabled (strict mode)", "keys", len(keys))
+		} else {
+			slog.Info("Broker auth middleware enabled (permissive mode)", "keys", len(keys))
+		}
+	}
+
+	s.brokerAuthMiddleware.UpdateKeys(keys)
 }
 
 // SetHubClient sets the Hub client for template hydration.
 // This is useful for testing or when the client is configured externally.
 func (s *Server) SetHubClient(client hubclient.Client) {
-	s.hubClient = client
+	s.hubMu.Lock()
+	defer s.hubMu.Unlock()
+
+	// Update or create the "default" connection
+	conn, ok := s.hubConnections["default"]
+	if !ok {
+		conn = &HubConnection{
+			Name:   "default",
+			Status: ConnectionStatusDisconnected,
+		}
+		s.hubConnections["default"] = conn
+	}
+	conn.HubClient = client
 	if s.cache != nil {
-		s.hydrator = templatecache.NewHydrator(s.cache, client)
+		conn.Hydrator = templatecache.NewHydrator(s.cache, client)
 	}
 }
 
@@ -337,14 +521,25 @@ func (s *Server) SetHubClient(client hubclient.Client) {
 // This is useful for testing or when the cache is configured externally.
 func (s *Server) SetTemplateCache(cache *templatecache.Cache) {
 	s.cache = cache
-	if s.hubClient != nil {
-		s.hydrator = templatecache.NewHydrator(cache, s.hubClient)
+	s.hubMu.Lock()
+	defer s.hubMu.Unlock()
+	for _, conn := range s.hubConnections {
+		if conn.HubClient != nil {
+			conn.Hydrator = templatecache.NewHydrator(cache, conn.HubClient)
+		}
 	}
 }
 
-// GetHydrator returns the template hydrator, if configured.
+// GetHydrator returns the template hydrator from the first available connection.
 func (s *Server) GetHydrator() *templatecache.Hydrator {
-	return s.hydrator
+	s.hubMu.RLock()
+	defer s.hubMu.RUnlock()
+	for _, conn := range s.hubConnections {
+		if conn.Hydrator != nil {
+			return conn.Hydrator
+		}
+	}
+	return nil
 }
 
 // Start starts the HTTP server.
@@ -371,70 +566,21 @@ func (s *Server) Start(ctx context.Context) error {
 			"brokerID", s.config.BrokerID,
 			"brokerName", s.config.BrokerName,
 			"hub_endpoint", s.config.HubEndpoint,
+			"hub_connections", len(s.hubConnections),
 		)
 	}
 
-	// Check if we have valid broker credentials for Hub communication
-	hasValidCredentials := s.brokerCredentials != nil && s.brokerCredentials.SecretKey != ""
-
-	// Start heartbeat service if enabled and we have valid credentials
-	if s.config.HeartbeatEnabled && s.hubClient != nil && s.config.BrokerID != "" {
-		if !hasValidCredentials {
-			slog.Warn("Skipping heartbeat: no valid broker credentials (run 'scion hub link' first)")
-		} else {
-			interval := s.config.HeartbeatInterval
-			if interval <= 0 {
-				interval = DefaultHeartbeatInterval
-			}
-
-			s.heartbeat = NewHeartbeatService(
-				s.hubClient.RuntimeBrokers(),
-				s.config.BrokerID,
-				interval,
-				s.manager,
-			)
-			s.heartbeat.SetVersion(s.version)
-			s.heartbeat.Start(ctx)
-			slog.Info("Heartbeat service started", "interval", interval)
+	// Start all hub connections' services
+	s.hubMu.RLock()
+	for name, conn := range s.hubConnections {
+		if err := conn.Start(ctx, s); err != nil {
+			slog.Error("Failed to start hub connection", "name", name, "error", err)
 		}
 	}
-
-	// Start control channel if enabled and we have valid credentials
-	if s.config.ControlChannelEnabled && s.config.HubEndpoint != "" && s.config.BrokerID != "" {
-		if !hasValidCredentials {
-			slog.Warn("Skipping control channel: no valid broker credentials (run 'scion hub link' first)")
-		} else {
-			secretKey, err := base64.StdEncoding.DecodeString(s.brokerCredentials.SecretKey)
-			if err != nil {
-				slog.Error("Failed to decode secret key", "error", err)
-			} else {
-				ccConfig := ControlChannelConfig{
-					HubEndpoint:         s.config.HubEndpoint,
-					BrokerID:              s.config.BrokerID,
-					SecretKey:           secretKey,
-					Version:             s.version,
-					ReconnectInitial:    1 * time.Second,
-					ReconnectMax:        60 * time.Second,
-					ReconnectMultiplier: 2.0,
-					PingInterval:        30 * time.Second,
-					PongWait:            60 * time.Second,
-					WriteWait:           10 * time.Second,
-					Debug:               s.config.Debug,
-				}
-
-				s.controlChannel = NewControlChannelClient(ccConfig, s.Handler(), s)
-				go func() {
-					if err := s.controlChannel.Connect(ctx); err != nil {
-						slog.Error("Control channel error", "error", err)
-					}
-				}()
-				slog.Info("Connecting to Hub control channel", "endpoint", s.config.HubEndpoint)
-			}
-		}
-	}
+	s.hubMu.RUnlock()
 
 	// Start credential watcher for dynamic reload
-	if s.config.HubEnabled && s.credentialsStore != nil {
+	if s.config.HubEnabled && s.multiCredStore != nil {
 		s.startCredentialWatcher(ctx)
 	}
 
@@ -456,30 +602,23 @@ func (s *Server) Start(ctx context.Context) error {
 
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Stop credential watcher
 	s.mu.RLock()
 	srv := s.httpServer
-	hb := s.heartbeat
-	cc := s.controlChannel
 	credWatcherStop := s.credWatcherStop
 	s.mu.RUnlock()
 
-	// Stop credential watcher
 	if credWatcherStop != nil {
 		slog.Info("Stopping credential watcher...")
 		close(credWatcherStop)
 	}
 
-	// Stop control channel first
-	if cc != nil {
-		slog.Info("Stopping control channel...")
-		cc.Close()
+	// Stop all hub connections
+	s.hubMu.RLock()
+	for _, conn := range s.hubConnections {
+		conn.Stop()
 	}
-
-	// Stop heartbeat service
-	if hb != nil {
-		slog.Info("Stopping heartbeat service...")
-		hb.Stop()
-	}
+	s.hubMu.RUnlock()
 
 	if srv == nil {
 		return nil
@@ -543,10 +682,10 @@ func (s *Server) RuntimeCommand() string {
 }
 
 // startCredentialWatcher starts a goroutine that watches for credential file changes.
-// When credentials change, it reinitializes the Hub client and restarts services.
+// When credentials change, it reinitializes hub connections as needed.
 func (s *Server) startCredentialWatcher(ctx context.Context) {
-	if s.credentialsStore == nil {
-		slog.Warn("No credentials store configured, skipping watcher")
+	if s.multiCredStore == nil {
+		slog.Warn("No multi-credential store configured, skipping watcher")
 		return
 	}
 
@@ -574,132 +713,192 @@ func (s *Server) credentialWatchLoop(ctx context.Context) {
 	}
 }
 
-// checkAndReloadCredentials checks if credentials have changed and reloads if necessary.
+// checkAndReloadCredentials checks if multi-store credentials have changed and reloads if necessary.
 func (s *Server) checkAndReloadCredentials(ctx context.Context) error {
-	if s.credentialsStore == nil {
+	if s.multiCredStore == nil {
 		return nil
 	}
 
-	creds, modTime, err := s.credentialsStore.LoadIfChanged(s.credentialsModTime)
+	creds, scanTime, changed, err := s.multiCredStore.LoadAllIfChanged(s.credLastScan)
 	if err != nil {
 		return fmt.Errorf("failed to check credentials: %w", err)
 	}
+	if !changed {
+		return nil
+	}
+	s.credLastScan = scanTime
 
-	if creds == nil {
-		return nil // No change
+	slog.Info("Credentials changed, reloading", "count", len(creds))
+
+	// Build name -> creds map from new scan
+	newCreds := make(map[string]*brokercredentials.BrokerCredentials)
+	for i := range creds {
+		newCreds[creds[i].Name] = &creds[i]
 	}
 
-	slog.Info("Credentials changed, reloading", "brokerID", creds.BrokerID)
+	s.hubMu.Lock()
 
-	s.mu.Lock()
-	oldCredentials := s.brokerCredentials
-	s.brokerCredentials = creds
-	s.credentialsModTime = modTime
-	s.mu.Unlock()
-
-	// Check if broker ID or secret key changed (requiring service restart)
-	brokerIDChanged := oldCredentials == nil || oldCredentials.BrokerID != creds.BrokerID
-	secretKeyChanged := oldCredentials == nil || oldCredentials.SecretKey != creds.SecretKey
-
-	if brokerIDChanged || secretKeyChanged {
-		if err := s.reinitializeHubServices(ctx, creds); err != nil {
-			slog.Error("Failed to reinitialize services", "error", err)
-			return err
+	// Detect removals: connections that exist but are not in newCreds
+	// (skip "local" connection which comes from InMemoryCredentials)
+	for name, conn := range s.hubConnections {
+		if name == "local" && s.config.InMemoryCredentials != nil {
+			continue
 		}
-		slog.Info("Services reinitialized with new credentials")
+		if _, exists := newCreds[name]; !exists {
+			slog.Info("Removing hub connection", "name", name)
+			conn.Stop()
+			delete(s.hubConnections, name)
+		}
 	}
+
+	// Detect additions and modifications
+	for name, c := range newCreds {
+		existingConn, exists := s.hubConnections[name]
+		if !exists {
+			// New connection
+			conn, err := s.createHubConnection(name, c)
+			if err != nil {
+				slog.Warn("Failed to create new hub connection", "name", name, "error", err)
+				continue
+			}
+			s.hubConnections[name] = conn
+			slog.Info("Added new hub connection", "name", name, "brokerID", c.BrokerID)
+
+			// Start services for the new connection
+			go func(conn *HubConnection) {
+				if err := conn.Start(ctx, s); err != nil {
+					slog.Error("Failed to start new hub connection", "name", conn.Name, "error", err)
+				}
+			}(conn)
+		} else {
+			// Check if credentials changed
+			if existingConn.Credentials == nil ||
+				existingConn.Credentials.BrokerID != c.BrokerID ||
+				existingConn.Credentials.SecretKey != c.SecretKey ||
+				existingConn.Credentials.HubEndpoint != c.HubEndpoint {
+
+				slog.Info("Reinitializing hub connection", "name", name)
+				go func(conn *HubConnection, creds *brokercredentials.BrokerCredentials) {
+					if err := conn.Reinitialize(ctx, s, creds); err != nil {
+						slog.Error("Failed to reinitialize hub connection", "name", conn.Name, "error", err)
+					}
+				}(existingConn, c)
+			}
+		}
+	}
+
+	s.hubMu.Unlock()
+
+	// Rebuild auth middleware with updated keys
+	s.buildAuthMiddleware()
 
 	return nil
 }
 
-// reinitializeHubServices stops and restarts the Hub client, heartbeat, and control channel.
-func (s *Server) reinitializeHubServices(ctx context.Context, creds *brokercredentials.BrokerCredentials) error {
-	// Decode the secret key
-	secretKey, err := base64.StdEncoding.DecodeString(creds.SecretKey)
-	if err != nil {
-		return fmt.Errorf("failed to decode secret key: %w", err)
+// buildGroveFilterForHub builds a grove filter function for a specific hub endpoint.
+// In multi-hub mode, each heartbeat should only report groves that belong to its hub.
+// In single-hub mode or when only one connection exists, no filtering is applied.
+func (s *Server) buildGroveFilterForHub(hubEndpoint string) func(string) bool {
+	s.hubMu.RLock()
+	connCount := len(s.hubConnections)
+	s.hubMu.RUnlock()
+
+	// Single-hub mode: no filtering needed
+	if connCount <= 1 {
+		return nil
 	}
 
-	// Stop existing services
-	s.mu.Lock()
-	if s.controlChannel != nil {
-		slog.Info("Stopping control channel for reload")
-		s.controlChannel.Close()
-		s.controlChannel = nil
-	}
-	if s.heartbeat != nil {
-		slog.Info("Stopping heartbeat for reload")
-		s.heartbeat.Stop()
-		s.heartbeat = nil
-	}
-	s.mu.Unlock()
-
-	// Create new Hub client with updated credentials
-	opts := []hubclient.Option{
-		hubclient.WithHMACAuth(creds.BrokerID, secretKey),
-	}
-	client, err := hubclient.New(s.config.HubEndpoint, opts...)
-	if err != nil {
-		return fmt.Errorf("failed to create Hub client: %w", err)
-	}
-
-	s.mu.Lock()
-	s.hubClient = client
-	s.config.BrokerID = creds.BrokerID // Update BrokerID in config
-	if s.cache != nil {
-		s.hydrator = templatecache.NewHydrator(s.cache, client)
-	}
-	slog.Info("Hub client reinitialized with HMAC auth", "brokerID", creds.BrokerID)
-	s.mu.Unlock()
-
-	// Restart heartbeat if enabled
-	if s.config.HeartbeatEnabled && s.config.BrokerID != "" {
-		interval := s.config.HeartbeatInterval
-		if interval <= 0 {
-			interval = DefaultHeartbeatInterval
+	// Multi-hub mode: build a filter from grove settings
+	// Scan groves and check which ones have their hub.endpoint matching this connection
+	return func(groveID string) bool {
+		// For now, try to find the grove's settings to determine its hub endpoint.
+		// This requires the agent manager to provide grove paths.
+		// As a simple implementation, we scan agents and check their grove settings.
+		if s.manager == nil {
+			return true // Can't filter without a manager
 		}
 
-		s.mu.Lock()
-		s.heartbeat = NewHeartbeatService(
-			client.RuntimeBrokers(),
-			creds.BrokerID,
-			interval,
-			s.manager,
-		)
-		s.heartbeat.SetVersion(s.version)
-		s.heartbeat.Start(ctx)
-		s.mu.Unlock()
-		slog.Info("Heartbeat restarted", "interval", interval)
-	}
-
-	// Restart control channel if enabled
-	if s.config.ControlChannelEnabled && s.config.HubEndpoint != "" {
-		ccConfig := ControlChannelConfig{
-			HubEndpoint:         s.config.HubEndpoint,
-			BrokerID:              creds.BrokerID,
-			SecretKey:           secretKey,
-			Version:             s.version,
-			ReconnectInitial:    1 * time.Second,
-			ReconnectMax:        60 * time.Second,
-			ReconnectMultiplier: 2.0,
-			PingInterval:        30 * time.Second,
-			PongWait:            60 * time.Second,
-			WriteWait:           10 * time.Second,
-			Debug:               s.config.Debug,
+		agents, err := s.manager.List(context.Background(), nil)
+		if err != nil {
+			return true // Allow on error
 		}
 
-		s.mu.Lock()
-		s.controlChannel = NewControlChannelClient(ccConfig, s.Handler(), s)
-		s.mu.Unlock()
-
-		go func() {
-			if err := s.controlChannel.Connect(ctx); err != nil {
-				slog.Error("Control channel error after reload", "error", err)
+		for _, ag := range agents {
+			agGroveID := ag.GroveID
+			if agGroveID == "" {
+				agGroveID = ag.Grove
 			}
-		}()
-		slog.Info("Control channel restarted")
+			if agGroveID != groveID {
+				continue
+			}
+
+			// Found an agent in this grove, check its grove path settings
+			if ag.GrovePath == "" {
+				continue
+			}
+
+			groveSettings, err := config.LoadSettingsFromDir(ag.GrovePath)
+			if err != nil {
+				continue
+			}
+
+			ep := groveSettings.GetHubEndpoint()
+			if ep != "" {
+				return ep == hubEndpoint
+			}
+		}
+
+		// If we can't determine the grove's hub, include it (safe default)
+		return true
+	}
+}
+
+// isMultiHubMode returns true if the broker is connected to more than one hub.
+func (s *Server) isMultiHubMode() bool {
+	s.hubMu.RLock()
+	defer s.hubMu.RUnlock()
+	return len(s.hubConnections) > 1
+}
+
+// isGlobalGrove returns true if the grove is the global grove.
+func (s *Server) isGlobalGrove(groveID, grovePath string) bool {
+	return groveID == "global" || groveID == "" || grovePath == ""
+}
+
+// resolveHydrator resolves the hydrator for a request, routing to the correct
+// hub connection based on the X-Scion-Hub-Connection header.
+func (s *Server) resolveHydrator(r *http.Request) *templatecache.Hydrator {
+	connName := r.Header.Get("X-Scion-Hub-Connection")
+	if connName != "" {
+		s.hubMu.RLock()
+		conn, ok := s.hubConnections[connName]
+		s.hubMu.RUnlock()
+		if ok && conn.Hydrator != nil {
+			return conn.Hydrator
+		}
 	}
 
+	// Fallback: return first available hydrator
+	s.hubMu.RLock()
+	defer s.hubMu.RUnlock()
+	for _, conn := range s.hubConnections {
+		if conn.Hydrator != nil {
+			return conn.Hydrator
+		}
+	}
+	return nil
+}
+
+// getFirstHeartbeat returns the heartbeat service from the first available connection.
+// Used for backward compat with single-hub references (e.g., force heartbeat after stop).
+func (s *Server) getFirstHeartbeat() *HeartbeatService {
+	s.hubMu.RLock()
+	defer s.hubMu.RUnlock()
+	for _, conn := range s.hubConnections {
+		if conn.Heartbeat != nil {
+			return conn.Heartbeat
+		}
+	}
 	return nil
 }
 

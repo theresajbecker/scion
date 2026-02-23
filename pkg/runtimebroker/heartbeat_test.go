@@ -118,7 +118,7 @@ func (m *heartbeatMockManager) Watch(ctx context.Context, agentID string) (<-cha
 
 func TestHeartbeatService_StartStop(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
-	svc := NewHeartbeatService(client, "test-host", 100*time.Millisecond, nil)
+	svc := NewHeartbeatService(client, "test-host", 100*time.Millisecond, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -149,7 +149,7 @@ func TestHeartbeatService_StartStop(t *testing.T) {
 
 func TestHeartbeatService_SendsInitialHeartbeat(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
-	svc := NewHeartbeatService(client, "test-host", time.Hour, nil) // Long interval
+	svc := NewHeartbeatService(client, "test-host", time.Hour, nil, nil) // Long interval
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -177,7 +177,7 @@ func TestHeartbeatService_SendsInitialHeartbeat(t *testing.T) {
 func TestHeartbeatService_MinInterval(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
 	// Try to create with interval less than minimum
-	svc := NewHeartbeatService(client, "test-host", 1*time.Millisecond, nil)
+	svc := NewHeartbeatService(client, "test-host", 1*time.Millisecond, nil, nil)
 
 	if svc.interval < MinHeartbeatInterval {
 		t.Errorf("Interval should be at least %v, got %v", MinHeartbeatInterval, svc.interval)
@@ -186,7 +186,7 @@ func TestHeartbeatService_MinInterval(t *testing.T) {
 
 func TestHeartbeatService_ForceHeartbeat(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
-	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
+	svc := NewHeartbeatService(client, "test-host", time.Hour, nil, nil)
 
 	err := svc.ForceHeartbeat(context.Background())
 	if err != nil {
@@ -209,7 +209,7 @@ func TestHeartbeatService_IncludesAgentInfo(t *testing.T) {
 		},
 	}
 
-	svc := NewHeartbeatService(client, "test-host", time.Hour, manager)
+	svc := NewHeartbeatService(client, "test-host", time.Hour, manager, nil)
 	err := svc.ForceHeartbeat(context.Background())
 	if err != nil {
 		t.Fatalf("ForceHeartbeat failed: %v", err)
@@ -241,7 +241,7 @@ func TestHeartbeatService_IncludesAgentInfo(t *testing.T) {
 
 func TestHeartbeatService_DoubleStart(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
-	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
+	svc := NewHeartbeatService(client, "test-host", time.Hour, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -257,7 +257,7 @@ func TestHeartbeatService_DoubleStart(t *testing.T) {
 
 func TestHeartbeatService_DoubleStop(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
-	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
+	svc := NewHeartbeatService(client, "test-host", time.Hour, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -273,7 +273,7 @@ func TestHeartbeatService_DoubleStop(t *testing.T) {
 
 func TestHeartbeatService_ContextCancellation(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
-	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
+	svc := NewHeartbeatService(client, "test-host", time.Hour, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -292,7 +292,7 @@ func TestHeartbeatService_ContextCancellation(t *testing.T) {
 
 func TestHeartbeatService_StopNotStarted(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
-	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
+	svc := NewHeartbeatService(client, "test-host", time.Hour, nil, nil)
 
 	// Stop without starting should be a no-op
 	svc.Stop()

@@ -450,9 +450,21 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("Using grove path from Hub", "path", req.GrovePath)
 	}
 
+	// Reject global groves in multi-hub mode
+	if s.isMultiHubMode() && s.isGlobalGrove(req.GroveID, req.GrovePath) {
+		writeJSON(w, http.StatusConflict, map[string]interface{}{
+			"error": map[string]string{
+				"code":    "global_grove_disabled",
+				"message": "Global grove is disabled when broker is connected to multiple hubs",
+			},
+		})
+		return
+	}
+
 	// Hydrate template if Hub mode is enabled and template info is provided
-	if s.hydrator != nil && req.Config != nil {
-		templatePath, err := s.hydrateTemplate(ctx, req.Config)
+	hydrator := s.resolveHydrator(r)
+	if hydrator != nil && req.Config != nil {
+		templatePath, err := s.hydrateTemplate(ctx, req.Config, hydrator)
 		if err != nil {
 			// Check if it's a Hub connectivity error
 			if templatecache.IsHubConnectivityError(err) {
@@ -598,7 +610,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 // hydrateTemplate fetches and caches a template from the Hub if template info is provided.
 // Returns the local template path, or empty string if no Hub template was specified.
-func (s *Server) hydrateTemplate(ctx context.Context, cfg *CreateAgentConfig) (string, error) {
+func (s *Server) hydrateTemplate(ctx context.Context, cfg *CreateAgentConfig, hydrator *templatecache.Hydrator) (string, error) {
 	// Check if we have template info from Hub
 	if cfg.TemplateID == "" && cfg.TemplateHash == "" {
 		// No Hub template info provided, use local template handling
@@ -607,12 +619,12 @@ func (s *Server) hydrateTemplate(ctx context.Context, cfg *CreateAgentConfig) (s
 
 	// If we have a template hash, try to use it for cache lookup
 	if cfg.TemplateHash != "" && cfg.TemplateID != "" {
-		return s.hydrator.HydrateWithHash(ctx, cfg.TemplateID, cfg.TemplateHash)
+		return hydrator.HydrateWithHash(ctx, cfg.TemplateID, cfg.TemplateHash)
 	}
 
 	// Just have template ID, do full hydration
 	if cfg.TemplateID != "" {
-		return s.hydrator.Hydrate(ctx, cfg.TemplateID)
+		return hydrator.Hydrate(ctx, cfg.TemplateID)
 	}
 
 	return "", nil
@@ -826,13 +838,19 @@ func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request, id string) {
 
 	// Send an immediate heartbeat so the hub gets the updated container status
 	// without waiting for the next periodic heartbeat interval.
-	if s.heartbeat != nil {
-		go func() {
-			if err := s.heartbeat.ForceHeartbeat(context.Background()); err != nil {
-				slog.Error("Failed to send forced heartbeat after stop", "agent", id, "error", err)
-			}
-		}()
+	// In multi-hub mode, force heartbeat on all connections.
+	s.hubMu.RLock()
+	for _, conn := range s.hubConnections {
+		if conn.Heartbeat != nil {
+			hb := conn.Heartbeat
+			go func() {
+				if err := hb.ForceHeartbeat(context.Background()); err != nil {
+					slog.Error("Failed to send forced heartbeat after stop", "agent", id, "error", err)
+				}
+			}()
+		}
 	}
+	s.hubMu.RUnlock()
 
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"status": "accepted",
@@ -1289,8 +1307,9 @@ func (s *Server) finalizeEnv(w http.ResponseWriter, r *http.Request, id string) 
 	}
 
 	// Hydrate template if needed
-	if s.hydrator != nil && origReq.Config != nil {
-		templatePath, err := s.hydrateTemplate(ctx, origReq.Config)
+	hydrator := s.resolveHydrator(r)
+	if hydrator != nil && origReq.Config != nil {
+		templatePath, err := s.hydrateTemplate(ctx, origReq.Config, hydrator)
 		if err != nil {
 			TemplateError(w, "Failed to hydrate template: "+err.Error())
 			return

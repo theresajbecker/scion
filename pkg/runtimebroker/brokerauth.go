@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/apiclient"
@@ -148,4 +149,129 @@ func (m *BrokerAuthMiddleware) UpdateSecretKey(key []byte) {
 // SetEnabled enables or disables authentication.
 func (m *BrokerAuthMiddleware) SetEnabled(enabled bool) {
 	m.config.Enabled = enabled
+}
+
+// secretKeyEntry associates a secret key with a hub connection name.
+type secretKeyEntry struct {
+	hubName   string
+	secretKey []byte
+}
+
+// MultiKeyBrokerAuthMiddleware provides HMAC-based authentication that supports
+// verifying requests signed by any of multiple hub connections' secret keys.
+type MultiKeyBrokerAuthMiddleware struct {
+	mu                   sync.RWMutex
+	keys                 []secretKeyEntry
+	maxClockSkew         time.Duration
+	allowUnauthenticated bool
+	enabled              bool
+}
+
+// NewMultiKeyBrokerAuthMiddleware creates a new multi-key broker authentication middleware.
+func NewMultiKeyBrokerAuthMiddleware(enabled bool, maxClockSkew time.Duration, allowUnauthenticated bool) *MultiKeyBrokerAuthMiddleware {
+	return &MultiKeyBrokerAuthMiddleware{
+		enabled:              enabled,
+		maxClockSkew:         maxClockSkew,
+		allowUnauthenticated: allowUnauthenticated,
+	}
+}
+
+// UpdateKeys replaces the set of secret keys used for verification.
+func (m *MultiKeyBrokerAuthMiddleware) UpdateKeys(keys []secretKeyEntry) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.keys = keys
+}
+
+// Middleware returns an HTTP middleware handler that validates HMAC signatures
+// against any of the registered secret keys.
+func (m *MultiKeyBrokerAuthMiddleware) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m.mu.RLock()
+		enabled := m.enabled
+		allowUnauth := m.allowUnauthenticated
+		keys := m.keys
+		maxSkew := m.maxClockSkew
+		m.mu.RUnlock()
+
+		if !enabled {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Extract HMAC headers
+		brokerID := r.Header.Get(apiclient.HeaderBrokerID)
+		timestamp := r.Header.Get(apiclient.HeaderTimestamp)
+		nonce := r.Header.Get(apiclient.HeaderNonce)
+		signature := r.Header.Get(apiclient.HeaderSignature)
+
+		// If no HMAC headers present, check if unauthenticated requests are allowed
+		if brokerID == "" && timestamp == "" && signature == "" {
+			if allowUnauth {
+				next.ServeHTTP(w, r)
+				return
+			}
+			m.writeError(w, "missing authentication headers")
+			return
+		}
+
+		// Validate required headers
+		if brokerID == "" {
+			m.writeError(w, "missing X-Scion-Broker-ID header")
+			return
+		}
+		if timestamp == "" {
+			m.writeError(w, "missing X-Scion-Timestamp header")
+			return
+		}
+		if signature == "" {
+			m.writeError(w, "missing X-Scion-Signature header")
+			return
+		}
+
+		// Validate timestamp
+		ts, err := strconv.ParseInt(timestamp, 10, 64)
+		if err != nil {
+			m.writeError(w, "invalid timestamp format")
+			return
+		}
+
+		requestTime := time.Unix(ts, 0)
+		clockSkew := time.Since(requestTime)
+		if clockSkew < 0 {
+			clockSkew = -clockSkew
+		}
+		if clockSkew > maxSkew {
+			m.writeError(w, fmt.Sprintf("timestamp outside acceptable range (skew: %v)", clockSkew))
+			return
+		}
+
+		// Decode the signature
+		sigBytes, err := base64.StdEncoding.DecodeString(signature)
+		if err != nil {
+			m.writeError(w, "invalid signature encoding")
+			return
+		}
+
+		// Build canonical string
+		canonical := apiclient.BuildCanonicalString(r, timestamp, nonce)
+
+		// Try each key until one matches
+		for _, entry := range keys {
+			if apiclient.VerifyHMAC(entry.secretKey, canonical, sigBytes) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		// No key matched
+		m.writeError(w, "invalid signature")
+	})
+}
+
+// writeError writes an authentication error response.
+func (m *MultiKeyBrokerAuthMiddleware) writeError(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	fmt.Fprintf(w, `{"error":{"code":"broker_auth_failed","message":%q}}`, message)
 }

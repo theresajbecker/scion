@@ -24,7 +24,7 @@ func TestControlChannelClient_BuildAuthHeaders_Normalization(t *testing.T) {
 		BrokerID:      "test-host",
 		SecretKey:   []byte("test-secret-key-12345678901234567890"),
 	}
-	client := NewControlChannelClient(config, nil, nil)
+	client := NewControlChannelClient(config, nil, nil, "")
 
 	headers, err := client.buildAuthHeaders()
 	if err != nil {
@@ -76,7 +76,7 @@ func TestBuildWebSocketURL_Normalization(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			client := NewControlChannelClient(ControlChannelConfig{HubEndpoint: tc.endpoint}, nil, nil)
+			client := NewControlChannelClient(ControlChannelConfig{HubEndpoint: tc.endpoint}, nil, nil, "")
 			wsURL, err := client.buildWebSocketURL()
 			if err != nil {
 				t.Fatalf("buildWebSocketURL failed: %v", err)
