@@ -529,9 +529,12 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 		req.WorkspaceStoragePath = agent.AppliedConfig.WorkspaceStoragePath
 	}
 
-	// For hub-native groves, propagate the grove slug so the broker can create
-	// the workspace at the conventional path (~/.scion/groves/<slug>/).
-	if agent.GroveID != "" {
+	// For hub-native groves (no git remote AND no local provider path on this
+	// broker), propagate the grove slug so the broker can create the workspace
+	// at the conventional path (~/.scion/groves/<slug>/).
+	// When the broker has a local provider path, the grove exists on its
+	// filesystem already and should use that path instead.
+	if agent.GroveID != "" && grovePath == "" {
 		grove, err := d.store.GetGrove(ctx, agent.GroveID)
 		if err == nil && grove.GitRemote == "" {
 			req.GroveSlug = grove.Slug
@@ -573,11 +576,18 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 
 	// Add configuration if available
 	if agent.AppliedConfig != nil {
+		workspace := agent.AppliedConfig.Workspace
+		// When the broker has a local provider path for this grove, the
+		// workspace is derived from the grove path (not a hub-native path).
+		// Clear the hub-native workspace that populateAgentConfig may have set.
+		if grovePath != "" {
+			workspace = ""
+		}
 		req.Config = &RemoteAgentConfig{
 			Template:     agent.Template,
 			Image:        agent.AppliedConfig.Image,
 			Task:         agent.AppliedConfig.Task,
-			Workspace:    agent.AppliedConfig.Workspace,
+			Workspace:    workspace,
 			Profile:      agent.AppliedConfig.Profile,
 			TemplateID:   agent.AppliedConfig.TemplateID,
 			TemplateHash: agent.AppliedConfig.TemplateHash,

@@ -1427,3 +1427,87 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_EmptyProfile(t *testing.T) {
 		t.Errorf("expected empty Profile, got '%s'", mockClient.lastCreateReq.Config.Profile)
 	}
 }
+
+func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_LocalPathGrove(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	// Create a non-git grove (no GitRemote) that has a local provider path.
+	// This is a local grove registered with the Hub, NOT a hub-native grove.
+	grove := &store.Grove{
+		ID:   "grove-local",
+		Name: "Local Grove",
+		Slug: "local-grove",
+		// No GitRemote — but this is NOT hub-native because the broker has a local path
+	}
+	if err := memStore.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	broker := &store.RuntimeBroker{
+		ID:       "broker-1",
+		Name:     "test-broker",
+		Slug:     "test-broker",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	// Add a grove provider record WITH a local path
+	provider := &store.GroveProvider{
+		GroveID:    "grove-local",
+		BrokerID:   "broker-1",
+		BrokerName: "test-broker",
+		LocalPath:  "/home/user/projects/myproject/.scion",
+		Status:     store.BrokerStatusOnline,
+	}
+	if err := memStore.AddGroveProvider(ctx, provider); err != nil {
+		t.Fatalf("failed to add grove provider: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
+		GroveID:         "grove-local",
+		RuntimeBrokerID: "broker-1",
+		AppliedConfig: &store.AgentAppliedConfig{
+			Harness:   "claude",
+			Workspace: "/should/be/cleared",
+		},
+	}
+
+	err := dispatcher.DispatchAgentCreate(ctx, agent)
+	if err != nil {
+		t.Fatalf("DispatchAgentCreate failed: %v", err)
+	}
+
+	if !mockClient.createCalled {
+		t.Fatal("expected CreateAgent to be called")
+	}
+
+	// A non-git grove with a local provider path should NOT have GroveSlug set.
+	// GroveSlug is only for hub-native groves (no local path on the broker).
+	if mockClient.lastCreateReq.GroveSlug != "" {
+		t.Errorf("expected empty GroveSlug for local-path grove, got '%s'", mockClient.lastCreateReq.GroveSlug)
+	}
+
+	// The GrovePath should be set from the provider
+	if mockClient.lastCreateReq.GrovePath != "/home/user/projects/myproject/.scion" {
+		t.Errorf("expected GrovePath '/home/user/projects/myproject/.scion', got '%s'", mockClient.lastCreateReq.GrovePath)
+	}
+
+	// Config.Workspace should be cleared when a local provider path exists,
+	// because the workspace is derived from the grove path, not the hub-native convention.
+	if mockClient.lastCreateReq.Config == nil {
+		t.Fatal("expected config to be present")
+	}
+	if mockClient.lastCreateReq.Config.Workspace != "" {
+		t.Errorf("expected empty Workspace for local-path grove, got '%s'", mockClient.lastCreateReq.Config.Workspace)
+	}
+}
