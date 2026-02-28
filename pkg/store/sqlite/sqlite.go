@@ -969,6 +969,103 @@ func (s *SQLiteStore) PurgeDeletedAgents(ctx context.Context, cutoff time.Time) 
 	return int(rowsAffected), nil
 }
 
+func (s *SQLiteStore) MarkStaleAgentsUndetermined(ctx context.Context, threshold time.Time) ([]store.Agent, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now()
+
+	// Update stale agents to undetermined status.
+	// Only affects agents that:
+	// - Have reported at least one heartbeat (last_seen IS NOT NULL)
+	// - Are not already undetermined (idempotent)
+	// - Are not in terminal/inactive states
+	// - Are in active states: running, busy, idle, waiting_for_input, provisioning, cloning
+	_, err = tx.ExecContext(ctx, `
+		UPDATE agents SET
+			status = ?,
+			updated_at = ?
+		WHERE last_seen < ?
+		  AND last_seen IS NOT NULL
+		  AND status NOT IN (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		store.AgentStatusUndetermined, now,
+		threshold,
+		store.AgentStatusUndetermined, store.AgentStatusStopped, store.AgentStatusCompleted,
+		store.AgentStatusError, store.AgentStatusDeleted, store.AgentStatusRestored,
+		store.AgentStatusCreated, store.AgentStatusPending,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch the agents that were just updated.
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, agent_id, name, template, grove_id,
+			labels, annotations,
+			status, connection_state, container_status, runtime_state,
+			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
+			applied_config,
+			created_at, updated_at, last_seen, deleted_at,
+			created_by, owner_id, visibility, state_version
+		FROM agents
+		WHERE status = ? AND updated_at = ?
+		  AND last_seen < ?
+		  AND last_seen IS NOT NULL
+	`, store.AgentStatusUndetermined, now, threshold)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []store.Agent
+	for rows.Next() {
+		var agent store.Agent
+		var labels, annotations, appliedConfig string
+		var lastSeen, deletedAt sql.NullTime
+		var runtimeBrokerID, message sql.NullString
+
+		if err := rows.Scan(
+			&agent.ID, &agent.Slug, &agent.Name, &agent.Template, &agent.GroveID,
+			&labels, &annotations,
+			&agent.Status, &agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
+			&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
+			&appliedConfig,
+			&agent.Created, &agent.Updated, &lastSeen, &deletedAt,
+			&agent.CreatedBy, &agent.OwnerID, &agent.Visibility, &agent.StateVersion,
+		); err != nil {
+			return nil, err
+		}
+
+		unmarshalJSON(labels, &agent.Labels)
+		unmarshalJSON(annotations, &agent.Annotations)
+		unmarshalJSON(appliedConfig, &agent.AppliedConfig)
+		if lastSeen.Valid {
+			agent.LastSeen = lastSeen.Time
+		}
+		if deletedAt.Valid {
+			agent.DeletedAt = deletedAt.Time
+		}
+		if runtimeBrokerID.Valid {
+			agent.RuntimeBrokerID = runtimeBrokerID.String
+		}
+		if message.Valid {
+			agent.Message = message.String
+		}
+
+		agents = append(agents, agent)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return agents, nil
+}
+
 // ============================================================================
 // Grove Operations
 // ============================================================================

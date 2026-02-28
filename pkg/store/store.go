@@ -117,6 +117,13 @@ type AgentStore interface {
 	// PurgeDeletedAgents permanently removes soft-deleted agents older than cutoff.
 	// Returns the number of agents purged.
 	PurgeDeletedAgents(ctx context.Context, cutoff time.Time) (int, error)
+
+	// MarkStaleAgentsUndetermined marks agents whose last heartbeat is older
+	// than threshold as "undetermined". Only affects agents in active states
+	// (running, busy, idle, waiting_for_input, provisioning, cloning) that have
+	// reported at least one heartbeat. Returns the updated agent records for
+	// event publishing.
+	MarkStaleAgentsUndetermined(ctx context.Context, threshold time.Time) ([]Agent, error)
 }
 
 // AgentFilter defines criteria for filtering agents.

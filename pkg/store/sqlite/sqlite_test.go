@@ -1218,3 +1218,196 @@ func TestCascadeDelete(t *testing.T) {
 	_, err = s.GetAgent(ctx, agent.ID)
 	assert.ErrorIs(t, err, store.ErrNotFound)
 }
+
+// ============================================================================
+// MarkStaleAgentsUndetermined Tests
+// ============================================================================
+
+func TestMarkStaleAgentsUndetermined(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	grove := &store.Grove{
+		ID:         api.NewUUID(),
+		Name:       "Heartbeat Grove",
+		Slug:       "heartbeat-grove",
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	// Create agents in various states with stale heartbeats (last_seen 5 minutes ago)
+	staleTime := time.Now().Add(-5 * time.Minute)
+	threshold := time.Now().Add(-2 * time.Minute)
+
+	// These agents should be marked undetermined (active states with stale heartbeat)
+	activeStatuses := []string{
+		store.AgentStatusRunning,
+		store.AgentStatusBusy,
+		store.AgentStatusIdle,
+		store.AgentStatusWaitingForInput,
+		store.AgentStatusProvisioning,
+		store.AgentStatusCloning,
+	}
+
+	var expectedIDs []string
+	for i, status := range activeStatuses {
+		agent := &store.Agent{
+			ID:         api.NewUUID(),
+			Slug:       "active-agent-" + status,
+			Name:       "Active Agent " + status,
+			Template:   "claude",
+			GroveID:    grove.ID,
+			Status:     store.AgentStatusPending,
+			Visibility: store.VisibilityPrivate,
+		}
+		require.NoError(t, s.CreateAgent(ctx, agent))
+
+		// Set the agent to the active status and give it a stale last_seen
+		err := s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
+			Status: status,
+		})
+		require.NoError(t, err, "setting status for agent %d", i)
+
+		// Manually set last_seen to stale time
+		_, err = s.db.ExecContext(ctx, "UPDATE agents SET last_seen = ? WHERE id = ?", staleTime, agent.ID)
+		require.NoError(t, err)
+
+		expectedIDs = append(expectedIDs, agent.ID)
+	}
+
+	// These agents should NOT be marked undetermined
+
+	// Terminal state: stopped
+	stoppedAgent := &store.Agent{
+		ID: api.NewUUID(), Slug: "stopped-agent", Name: "Stopped Agent",
+		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusStopped,
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateAgent(ctx, stoppedAgent))
+	_, err := s.db.ExecContext(ctx, "UPDATE agents SET last_seen = ? WHERE id = ?", staleTime, stoppedAgent.ID)
+	require.NoError(t, err)
+
+	// Terminal state: completed
+	completedAgent := &store.Agent{
+		ID: api.NewUUID(), Slug: "completed-agent", Name: "Completed Agent",
+		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusCompleted,
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateAgent(ctx, completedAgent))
+	_, err = s.db.ExecContext(ctx, "UPDATE agents SET last_seen = ? WHERE id = ?", staleTime, completedAgent.ID)
+	require.NoError(t, err)
+
+	// Terminal state: error
+	errorAgent := &store.Agent{
+		ID: api.NewUUID(), Slug: "error-agent", Name: "Error Agent",
+		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusError,
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateAgent(ctx, errorAgent))
+	_, err = s.db.ExecContext(ctx, "UPDATE agents SET last_seen = ? WHERE id = ?", staleTime, errorAgent.ID)
+	require.NoError(t, err)
+
+	// No heartbeat yet (last_seen is NULL)
+	noHeartbeatAgent := &store.Agent{
+		ID: api.NewUUID(), Slug: "no-heartbeat", Name: "No Heartbeat Agent",
+		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusRunning,
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateAgent(ctx, noHeartbeatAgent))
+	// last_seen is NULL by default from CreateAgent (the zero time.Time becomes NULL)
+
+	// Recent heartbeat (should not be affected)
+	recentAgent := &store.Agent{
+		ID: api.NewUUID(), Slug: "recent-agent", Name: "Recent Agent",
+		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusRunning,
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateAgent(ctx, recentAgent))
+	err = s.UpdateAgentStatus(ctx, recentAgent.ID, store.AgentStatusUpdate{
+		Status: store.AgentStatusRunning,
+	})
+	require.NoError(t, err)
+	// last_seen is set to now by UpdateAgentStatus, which is within the threshold
+
+	// Execute
+	agents, err := s.MarkStaleAgentsUndetermined(ctx, threshold)
+	require.NoError(t, err)
+	assert.Len(t, agents, len(activeStatuses), "should only mark active stale agents")
+
+	// Verify the returned agents match expected
+	returnedIDs := make(map[string]bool)
+	for _, a := range agents {
+		returnedIDs[a.ID] = true
+		assert.Equal(t, store.AgentStatusUndetermined, a.Status, "returned agent should have undetermined status")
+	}
+	for _, id := range expectedIDs {
+		assert.True(t, returnedIDs[id], "expected agent %s to be in returned set", id)
+	}
+
+	// Verify agents in DB are actually updated
+	for _, id := range expectedIDs {
+		a, err := s.GetAgent(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, store.AgentStatusUndetermined, a.Status, "DB agent should have undetermined status")
+	}
+
+	// Verify non-target agents were NOT affected
+	a, err := s.GetAgent(ctx, stoppedAgent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.AgentStatusStopped, a.Status)
+
+	a, err = s.GetAgent(ctx, completedAgent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.AgentStatusCompleted, a.Status)
+
+	a, err = s.GetAgent(ctx, recentAgent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.AgentStatusRunning, a.Status)
+}
+
+func TestMarkStaleAgentsUndetermined_Idempotent(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	grove := &store.Grove{
+		ID:         api.NewUUID(),
+		Name:       "Idempotent Grove",
+		Slug:       "idempotent-grove",
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	staleTime := time.Now().Add(-5 * time.Minute)
+	threshold := time.Now().Add(-2 * time.Minute)
+
+	agent := &store.Agent{
+		ID: api.NewUUID(), Slug: "stale-agent", Name: "Stale Agent",
+		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusRunning,
+		Visibility: store.VisibilityPrivate,
+	}
+	require.NoError(t, s.CreateAgent(ctx, agent))
+	_, err := s.db.ExecContext(ctx, "UPDATE agents SET last_seen = ? WHERE id = ?", staleTime, agent.ID)
+	require.NoError(t, err)
+
+	// First call should mark it undetermined
+	agents, err := s.MarkStaleAgentsUndetermined(ctx, threshold)
+	require.NoError(t, err)
+	assert.Len(t, agents, 1)
+
+	// Second call should return empty (already undetermined)
+	agents, err = s.MarkStaleAgentsUndetermined(ctx, threshold)
+	require.NoError(t, err)
+	assert.Len(t, agents, 0, "should not re-mark already undetermined agents")
+}
+
+func TestMarkStaleAgentsUndetermined_NoStaleAgents(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	threshold := time.Now().Add(-2 * time.Minute)
+
+	// No agents at all
+	agents, err := s.MarkStaleAgentsUndetermined(ctx, threshold)
+	require.NoError(t, err)
+	assert.Len(t, agents, 0)
+}

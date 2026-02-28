@@ -825,7 +825,31 @@ func (s *Server) GenerateAgentToken(agentID, groveID string, additionalScopes ..
 	return tokenService.GenerateAgentToken(agentID, groveID, scopes)
 }
 
-// Start starts the HTTP server.
+// agentHeartbeatTimeoutHandler returns a recurring handler function that marks
+// agents as "undetermined" when their last heartbeat exceeds a 2-minute threshold.
+// It publishes status events for each affected agent so SSE subscribers and the
+// notification system are informed.
+func (s *Server) agentHeartbeatTimeoutHandler() func(ctx context.Context) {
+	return func(ctx context.Context) {
+		threshold := time.Now().Add(-2 * time.Minute)
+
+		agents, err := s.store.MarkStaleAgentsUndetermined(ctx, threshold)
+		if err != nil {
+			slog.Error("Scheduler: heartbeat timeout check failed", "error", err)
+			return
+		}
+
+		for i := range agents {
+			s.events.PublishAgentStatus(ctx, &agents[i])
+		}
+
+		if len(agents) > 0 {
+			slog.Info("Scheduler: marked stale agents as undetermined",
+				"count", len(agents), "threshold", threshold)
+		}
+	}
+}
+
 // purgeHandler returns a recurring handler function that permanently removes
 // soft-deleted agents that have exceeded the retention period.
 func (s *Server) purgeHandler() func(ctx context.Context) {
@@ -858,6 +882,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Initialize and start the scheduler
 	s.scheduler = NewScheduler()
+	s.scheduler.RegisterRecurring("agent-heartbeat-timeout", 1, s.agentHeartbeatTimeoutHandler())
 	if s.config.SoftDeleteRetention > 0 {
 		s.scheduler.RegisterRecurring("soft-delete-purge", 60, s.purgeHandler())
 	}

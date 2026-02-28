@@ -120,6 +120,7 @@ const (
 	AgentStatusCompleted       = "completed"
 	AgentStatusDeleted         = "deleted"
 	AgentStatusRestored        = "restored"
+	AgentStatusUndetermined    = "undetermined"
 )
 
 // Grove represents a project/agent group in the Hub database.
