@@ -824,6 +824,39 @@ const (
 //   - api.AgentInfo.ContainerID = Runtime container ID (ephemeral, runtime-assigned)
 // =============================================================================
 
+// =============================================================================
+// Scheduled Events (One-Shot Timers)
+// =============================================================================
+
+// ScheduledEvent represents a one-shot timer persisted in the database.
+type ScheduledEvent struct {
+	ID        string     `json:"id"`
+	GroveID   string     `json:"groveId"`
+	EventType string     `json:"eventType"`        // "message", "status_update"
+	FireAt    time.Time  `json:"fireAt"`            // When to fire (UTC)
+	Payload   string     `json:"payload"`           // JSON blob (handler-specific)
+	Status    string     `json:"status"`            // pending, fired, cancelled, expired
+	CreatedAt time.Time  `json:"createdAt"`
+	CreatedBy string     `json:"createdBy"`
+	FiredAt   *time.Time `json:"firedAt,omitempty"`
+	Error     string     `json:"error,omitempty"`
+}
+
+// ScheduledEventStatus constants
+const (
+	ScheduledEventPending   = "pending"
+	ScheduledEventFired     = "fired"
+	ScheduledEventCancelled = "cancelled"
+	ScheduledEventExpired   = "expired" // Loaded on startup past its fire time
+)
+
+// ScheduledEventFilter for listing events.
+type ScheduledEventFilter struct {
+	GroveID   string
+	EventType string
+	Status    string
+}
+
 // ToAPI converts a store.Agent to an api.AgentInfo for external consumption.
 func (a *Agent) ToAPI() *api.AgentInfo {
 	info := &api.AgentInfo{

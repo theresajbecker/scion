@@ -16,18 +16,28 @@ package hub
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/ptone/scion-agent/pkg/store"
 )
 
-// Scheduler manages recurring timers within the Hub server.
+// Scheduler manages recurring and one-shot timers within the Hub server.
 // A single root ticker fires every 1 minute and drives all registered
 // recurring handlers based on their configured interval.
+//
+// One-shot timers are persisted in the database and scheduled in memory
+// via time.AfterFunc. On startup, expired timers fire immediately; future
+// timers are scheduled for their fire_at time.
 //
 // All recurring handlers must be registered via RegisterRecurring before
 // Start is called. RegisterRecurring is not safe for concurrent use.
 type Scheduler struct {
+	// Store for persisting one-shot events
+	store store.Store
+
 	// Root ticker interval
 	tickInterval time.Duration
 
@@ -36,6 +46,10 @@ type Scheduler struct {
 
 	// Tick counter (monotonically increasing)
 	tickCount uint64
+
+	// One-shot timers (in-memory)
+	mu     sync.Mutex
+	timers map[string]*scheduledTimer
 
 	// Lifecycle
 	stopCh chan struct{}
@@ -49,10 +63,20 @@ type RecurringHandler struct {
 	Fn       func(ctx context.Context) // The work to perform
 }
 
+// scheduledTimer wraps a time.Timer with metadata for one-shot events.
+type scheduledTimer struct {
+	ID     string
+	Timer  *time.Timer
+	FireAt time.Time
+	Cancel context.CancelFunc
+}
+
 // NewScheduler creates a new Scheduler with a 1-minute root ticker interval.
-func NewScheduler() *Scheduler {
+func NewScheduler(st store.Store) *Scheduler {
 	return &Scheduler{
+		store:        st,
 		tickInterval: 1 * time.Minute,
+		timers:       make(map[string]*scheduledTimer),
 		stopCh:       make(chan struct{}),
 	}
 }
@@ -75,8 +99,12 @@ func (s *Scheduler) RegisterRecurring(name string, intervalMinutes int, fn func(
 
 // Start begins the root ticker loop and runs eligible handlers immediately
 // on startup (tick 0). The provided context is used as the parent for handler
-// invocations.
+// invocations. Before starting the ticker, persisted one-shot timers are
+// loaded from the database.
 func (s *Scheduler) Start(ctx context.Context) {
+	// Load and schedule persisted one-shot timers
+	s.loadPersistedTimers(ctx)
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -102,11 +130,24 @@ func (s *Scheduler) Start(ctx context.Context) {
 	}()
 }
 
-// Stop signals the scheduler to stop and waits for the root ticker goroutine
-// to exit. In-flight handler goroutines are not tracked; they will be
-// cancelled via the parent context when the server shuts down.
+// Stop signals the scheduler to stop, cancels all pending one-shot timers,
+// and waits for the root ticker goroutine to exit. In-flight handler
+// goroutines are not tracked; they will be cancelled via the parent context
+// when the server shuts down.
 func (s *Scheduler) Stop() {
 	close(s.stopCh)
+
+	// Cancel all one-shot timers
+	s.mu.Lock()
+	for _, st := range s.timers {
+		st.Timer.Stop()
+		if st.Cancel != nil {
+			st.Cancel()
+		}
+	}
+	s.timers = make(map[string]*scheduledTimer)
+	s.mu.Unlock()
+
 	s.wg.Wait()
 }
 
@@ -138,4 +179,166 @@ func (s *Scheduler) runRecurringHandlers(ctx context.Context) {
 			}()
 		}
 	}
+}
+
+// =============================================================================
+// One-Shot Timer Methods
+// =============================================================================
+
+// loadPersistedTimers loads all pending events from the database on startup.
+// Events whose fire_at is in the past are executed immediately with status
+// "expired". Future events are scheduled in memory.
+func (s *Scheduler) loadPersistedTimers(ctx context.Context) {
+	if s.store == nil {
+		return
+	}
+
+	events, err := s.store.ListPendingScheduledEvents(ctx)
+	if err != nil {
+		slog.Error("Scheduler: failed to load pending events", "error", err)
+		return
+	}
+
+	now := time.Now()
+	var expiredCount, scheduledCount int
+
+	for _, evt := range events {
+		if evt.FireAt.Before(now) || evt.FireAt.Equal(now) {
+			// Expired while Hub was down — execute immediately
+			expiredCount++
+			go s.fireEvent(ctx, evt, true)
+		} else {
+			// Schedule for the future
+			scheduledCount++
+			s.scheduleTimer(ctx, evt)
+		}
+	}
+
+	if expiredCount > 0 || scheduledCount > 0 {
+		slog.Info("Scheduler: loaded persisted events",
+			"expired", expiredCount, "scheduled", scheduledCount)
+	}
+}
+
+// scheduleTimer creates a time.AfterFunc timer for the given event and tracks
+// it in the in-memory timer map.
+func (s *Scheduler) scheduleTimer(ctx context.Context, evt store.ScheduledEvent) {
+	delay := time.Until(evt.FireAt)
+	if delay < 0 {
+		delay = 0
+	}
+
+	timerCtx, cancel := context.WithCancel(ctx)
+
+	timer := time.AfterFunc(delay, func() {
+		defer cancel()
+		s.fireEvent(timerCtx, evt, false)
+		s.mu.Lock()
+		delete(s.timers, evt.ID)
+		s.mu.Unlock()
+	})
+
+	s.mu.Lock()
+	s.timers[evt.ID] = &scheduledTimer{
+		ID:     evt.ID,
+		Timer:  timer,
+		FireAt: evt.FireAt,
+		Cancel: cancel,
+	}
+	s.mu.Unlock()
+}
+
+// fireEvent executes the event handler with panic recovery and updates the
+// database status. wasExpired indicates the timer was past its fire_at when
+// loaded on startup.
+func (s *Scheduler) fireEvent(ctx context.Context, evt store.ScheduledEvent, wasExpired bool) {
+	handlerCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	status := store.ScheduledEventFired
+	if wasExpired {
+		status = store.ScheduledEventExpired
+	}
+
+	var errMsg string
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				errMsg = fmt.Sprintf("handler panicked: %v", r)
+				slog.Error("Scheduler: event handler panicked",
+					"eventID", evt.ID, "type", evt.EventType, "panic", r)
+			}
+		}()
+
+		if err := s.executeEvent(handlerCtx, evt); err != nil {
+			errMsg = err.Error()
+			slog.Warn("Scheduler: event handler failed",
+				"eventID", evt.ID, "type", evt.EventType, "error", err)
+		} else {
+			slog.Info("Scheduler: event fired",
+				"eventID", evt.ID, "type", evt.EventType, "wasExpired", wasExpired)
+		}
+	}()
+
+	now := time.Now()
+	if s.store != nil {
+		_ = s.store.UpdateScheduledEventStatus(ctx, evt.ID, status, &now, errMsg)
+	}
+}
+
+// executeEvent dispatches the event to the appropriate handler based on its
+// EventType. Unknown event types return an error.
+func (s *Scheduler) executeEvent(ctx context.Context, evt store.ScheduledEvent) error {
+	switch evt.EventType {
+	case "message":
+		// Stub: message event handling will be implemented in Phase 4
+		slog.Info("Scheduler: message event received (stub)", "eventID", evt.ID, "groveID", evt.GroveID)
+		return nil
+	case "status_update":
+		// Stub: status_update event handling will be implemented in Phase 4
+		slog.Info("Scheduler: status_update event received (stub)", "eventID", evt.ID, "groveID", evt.GroveID)
+		return nil
+	default:
+		return fmt.Errorf("unknown event type: %s", evt.EventType)
+	}
+}
+
+// ScheduleEvent creates a new one-shot scheduled event. The event is persisted
+// to the database first, then scheduled in memory.
+func (s *Scheduler) ScheduleEvent(ctx context.Context, evt store.ScheduledEvent) error {
+	if s.store == nil {
+		return fmt.Errorf("scheduler has no store configured")
+	}
+
+	// Persist to database first
+	if err := s.store.CreateScheduledEvent(ctx, &evt); err != nil {
+		return err
+	}
+
+	// Schedule in memory
+	s.scheduleTimer(ctx, evt)
+
+	slog.Info("Scheduler: event scheduled",
+		"eventID", evt.ID, "type", evt.EventType, "fireAt", evt.FireAt)
+	return nil
+}
+
+// CancelEvent cancels a pending scheduled event. The in-memory timer is
+// stopped and the database record is marked as cancelled.
+func (s *Scheduler) CancelEvent(ctx context.Context, id string) error {
+	s.mu.Lock()
+	if st, ok := s.timers[id]; ok {
+		st.Timer.Stop()
+		if st.Cancel != nil {
+			st.Cancel()
+		}
+		delete(s.timers, id)
+	}
+	s.mu.Unlock()
+
+	if s.store == nil {
+		return fmt.Errorf("scheduler has no store configured")
+	}
+
+	return s.store.CancelScheduledEvent(ctx, id)
 }

@@ -854,14 +854,22 @@ func (s *Server) agentHeartbeatTimeoutHandler() func(ctx context.Context) {
 // soft-deleted agents that have exceeded the retention period.
 func (s *Server) purgeHandler() func(ctx context.Context) {
 	return func(ctx context.Context) {
+		// Purge soft-deleted agents
 		cutoff := time.Now().Add(-s.config.SoftDeleteRetention)
 		purged, err := s.store.PurgeDeletedAgents(ctx, cutoff)
 		if err != nil {
 			slog.Error("Scheduler: agent purge failed", "error", err)
-			return
-		}
-		if purged > 0 {
+		} else if purged > 0 {
 			slog.Info("Scheduler: purged soft-deleted agents", "count", purged, "cutoff", cutoff)
+		}
+
+		// Purge old scheduled events (non-pending, older than 7 days)
+		eventCutoff := time.Now().Add(-7 * 24 * time.Hour)
+		purgedEvents, err := s.store.PurgeOldScheduledEvents(ctx, eventCutoff)
+		if err != nil {
+			slog.Error("Scheduler: scheduled event purge failed", "error", err)
+		} else if purgedEvents > 0 {
+			slog.Info("Scheduler: purged old scheduled events", "count", purgedEvents)
 		}
 	}
 }
@@ -881,7 +889,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.mu.Unlock()
 
 	// Initialize and start the scheduler
-	s.scheduler = NewScheduler()
+	s.scheduler = NewScheduler(s.store)
 	s.scheduler.RegisterRecurring("agent-heartbeat-timeout", 1, s.agentHeartbeatTimeoutHandler())
 	if s.config.SoftDeleteRetention > 0 {
 		s.scheduler.RegisterRecurring("soft-delete-purge", 60, s.purgeHandler())

@@ -81,6 +81,9 @@ type Store interface {
 
 	// Notification operations (Agent Status Notification System)
 	NotificationStore
+
+	// ScheduledEvent operations (One-Shot Timers)
+	ScheduledEventStore
 }
 
 // AgentStore defines agent-related persistence operations.
@@ -700,4 +703,35 @@ type NotificationStore interface {
 	// GetLastNotificationStatus returns the status of the most recent notification
 	// for a given subscription. Returns ("", nil) if no notifications exist.
 	GetLastNotificationStatus(ctx context.Context, subscriptionID string) (string, error)
+}
+
+// =============================================================================
+// Scheduled Events (One-Shot Timers)
+// =============================================================================
+
+// ScheduledEventStore manages one-shot scheduled events.
+type ScheduledEventStore interface {
+	// CreateScheduledEvent creates a new scheduled event.
+	CreateScheduledEvent(ctx context.Context, event *ScheduledEvent) error
+
+	// GetScheduledEvent retrieves a scheduled event by ID.
+	// Returns ErrNotFound if the event doesn't exist.
+	GetScheduledEvent(ctx context.Context, id string) (*ScheduledEvent, error)
+
+	// ListPendingScheduledEvents returns all events with status "pending".
+	// Used on startup to load timers into memory.
+	ListPendingScheduledEvents(ctx context.Context) ([]ScheduledEvent, error)
+
+	// UpdateScheduledEventStatus updates the status and optional error for an event.
+	UpdateScheduledEventStatus(ctx context.Context, id string, status string, firedAt *time.Time, errMsg string) error
+
+	// CancelScheduledEvent marks an event as cancelled.
+	// Returns ErrNotFound if the event doesn't exist or is not pending.
+	CancelScheduledEvent(ctx context.Context, id string) error
+
+	// ListScheduledEvents returns events matching the filter criteria.
+	ListScheduledEvents(ctx context.Context, filter ScheduledEventFilter, opts ListOptions) (*ListResult[ScheduledEvent], error)
+
+	// PurgeOldScheduledEvents removes non-pending events older than cutoff.
+	PurgeOldScheduledEvents(ctx context.Context, cutoff time.Time) (int, error)
 }

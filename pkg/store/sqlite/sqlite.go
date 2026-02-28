@@ -88,6 +88,7 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 		migrationV16,
 		migrationV17,
 		migrationV18,
+		migrationV19,
 	}
 
 	// Create migrations table if not exists
@@ -565,6 +566,26 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_subscriber ON notifications(subscriber_type, subscriber_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_grove ON notifications(grove_id);
+`
+
+const migrationV19 = `
+CREATE TABLE IF NOT EXISTS scheduled_events (
+	id TEXT PRIMARY KEY,
+	grove_id TEXT NOT NULL,
+	event_type TEXT NOT NULL,
+	fire_at TIMESTAMP NOT NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	created_by TEXT,
+	fired_at TIMESTAMP,
+	error TEXT,
+
+	FOREIGN KEY (grove_id) REFERENCES groves(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_status ON scheduled_events(status);
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_fire_at ON scheduled_events(fire_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_grove ON scheduled_events(grove_id);
 `
 
 // Helper functions for JSON marshaling/unmarshaling

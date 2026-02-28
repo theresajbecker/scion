@@ -864,13 +864,13 @@ When the Hub moves to a multi-node deployment, the scheduler will need leader el
 9. ~~Wire handler registration into server setup (always registered, 1-minute interval).~~
 10. ~~Tests for the heartbeat timeout query and handler.~~
 
-### Phase 3: One-Shot Timer Infrastructure
-11. Add `scheduled_events` table (new SQLite migration).
-12. Add `ScheduledEventStore` interface and SQLite implementation.
-13. Add `ScheduledEvent` model to `pkg/store/models.go`.
-14. Implement one-shot timer loading, scheduling, firing, and cancellation.
-15. Add scheduled event cleanup to the purge recurring handler.
-16. Tests for one-shot timer lifecycle, expired timer handling, and cancellation.
+### Phase 3: One-Shot Timer Infrastructure ✅
+11. ~~Add `scheduled_events` table (new SQLite migration).~~
+12. ~~Add `ScheduledEventStore` interface and SQLite implementation.~~
+13. ~~Add `ScheduledEvent` model to `pkg/store/models.go`.~~
+14. ~~Implement one-shot timer loading, scheduling, firing, and cancellation.~~
+15. ~~Add scheduled event cleanup to the purge recurring handler.~~
+16. ~~Tests for one-shot timer lifecycle, expired timer handling, and cancellation.~~
 
 ### Phase 4: API and CLI (Deferred)
 17. Hub API endpoints for creating and cancelling scheduled events.
