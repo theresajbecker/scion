@@ -1817,6 +1817,91 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_LocalPathGrove(t *t
 	}
 }
 
+// TestHTTPAgentDispatcher_DispatchAgentCreate_LinkedGroveNoGitRemote verifies
+// that a linked grove without a git remote (registered via CLI link, not via
+// git URL) uses the provider's LocalPath rather than being treated as hub-native.
+func TestHTTPAgentDispatcher_DispatchAgentCreate_LinkedGroveNoGitRemote(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	// Create a linked grove WITHOUT a GitRemote — this is what happens when
+	// a user links a local project via `scion hub groves link`.
+	grove := &store.Grove{
+		ID:   "grove-linked-no-git",
+		Name: "Linked No Git Grove",
+		Slug: "linked-no-git",
+		// No GitRemote — looks like hub-native, but has a provider path
+	}
+	if err := memStore.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	broker := &store.RuntimeBroker{
+		ID:       "broker-1",
+		Name:     "test-broker",
+		Slug:     "test-broker",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	// Add a grove provider record WITH a local path
+	provider := &store.GroveProvider{
+		GroveID:    "grove-linked-no-git",
+		BrokerID:   "broker-1",
+		BrokerName: "test-broker",
+		LocalPath:  "/Users/ptone/dev/projects/my-project/.scion",
+		Status:     store.BrokerStatusOnline,
+	}
+	if err := memStore.AddGroveProvider(ctx, provider); err != nil {
+		t.Fatalf("failed to add grove provider: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
+		GroveID:         "grove-linked-no-git",
+		RuntimeBrokerID: "broker-1",
+		AppliedConfig: &store.AgentAppliedConfig{
+			HarnessConfig: "claude",
+			Workspace:     "/should/be/cleared",
+		},
+	}
+
+	err := dispatcher.DispatchAgentCreate(ctx, agent)
+	if err != nil {
+		t.Fatalf("DispatchAgentCreate failed: %v", err)
+	}
+
+	if !mockClient.createCalled {
+		t.Fatal("expected CreateAgent to be called")
+	}
+
+	// Provider path must take precedence — should NOT be treated as hub-native
+	if mockClient.lastCreateReq.GroveSlug != "" {
+		t.Errorf("expected empty GroveSlug for linked grove with provider path, got '%s'", mockClient.lastCreateReq.GroveSlug)
+	}
+
+	// The GrovePath should be set from the provider
+	if mockClient.lastCreateReq.GrovePath != "/Users/ptone/dev/projects/my-project/.scion" {
+		t.Errorf("expected GrovePath '/Users/ptone/dev/projects/my-project/.scion', got '%s'", mockClient.lastCreateReq.GrovePath)
+	}
+
+	// Config.Workspace should be cleared when a local provider path exists
+	if mockClient.lastCreateReq.Config == nil {
+		t.Fatal("expected config to be present")
+	}
+	if mockClient.lastCreateReq.Config.Workspace != "" {
+		t.Errorf("expected empty Workspace for linked grove with provider path, got '%s'", mockClient.lastCreateReq.Config.Workspace)
+	}
+}
+
 func TestBuildCreateRequest_ResolvesStorageEnvVars(t *testing.T) {
 	ctx := context.Background()
 	memStore := createTestStore(t)
