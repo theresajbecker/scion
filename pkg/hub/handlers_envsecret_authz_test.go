@@ -1213,7 +1213,7 @@ func TestEnvVar_HubScope_AdminCanDelete(t *testing.T) {
 	}
 }
 
-func TestEnvVar_HubScope_MemberCanRead(t *testing.T) {
+func TestEnvVar_HubScope_MemberReadForbidden(t *testing.T) {
 	srv, s := testServer(t)
 	ctx := context.Background()
 
@@ -1232,10 +1232,10 @@ func TestEnvVar_HubScope_MemberCanRead(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// Non-admin member should be able to read hub-scoped env vars
+	// Non-admin member should be forbidden from reading hub-scoped env vars
 	rec2 := doRequestAsUser(t, srv, member, http.MethodGet, "/api/v1/env?scope=hub", nil)
-	if rec2.Code != http.StatusOK {
-		t.Errorf("expected 200 for member hub scope read, got %d: %s", rec2.Code, rec2.Body.String())
+	if rec2.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for member hub scope read, got %d: %s", rec2.Code, rec2.Body.String())
 	}
 }
 
@@ -1357,7 +1357,7 @@ func TestSecret_HubScope_AdminCanSetAndGet(t *testing.T) {
 	}
 }
 
-func TestSecret_HubScope_MemberCanRead(t *testing.T) {
+func TestSecret_HubScope_MemberReadForbidden(t *testing.T) {
 	srv, s := testServer(t)
 	srv.SetSecretBackend(secret.NewLocalBackend(s))
 	ctx := context.Background()
@@ -1377,10 +1377,10 @@ func TestSecret_HubScope_MemberCanRead(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// Non-admin member should be able to read hub-scoped secrets
+	// Non-admin member should be forbidden from reading hub-scoped secrets
 	rec2 := doRequestAsUser(t, srv, member, http.MethodGet, "/api/v1/secrets?scope=hub", nil)
-	if rec2.Code != http.StatusOK {
-		t.Errorf("expected 200 for member hub scope secret read, got %d: %s", rec2.Code, rec2.Body.String())
+	if rec2.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for member hub scope secret read, got %d: %s", rec2.Code, rec2.Body.String())
 	}
 }
 

@@ -151,6 +151,11 @@ const STANDALONE_ROUTES = new Set(['scion-login-page']);
 const PROFILE_ROUTES = new Set(['scion-page-profile-env-vars', 'scion-page-profile-secrets', 'scion-page-profile-settings']);
 
 /**
+ * Routes that require admin role. Non-admin users are redirected to dashboard.
+ */
+const ADMIN_ROUTES = new Set(['scion-page-settings', 'scion-page-admin-users', 'scion-page-admin-groups', 'scion-page-admin-group-detail']);
+
+/**
  * Initialize the client-side application
  */
 async function init(): Promise<void> {
@@ -279,6 +284,12 @@ function renderRoute(path: string): void {
     title: 'Scion',
     user: currentUser || undefined,
   };
+
+  // Block non-admin users from admin-only routes
+  if (ADMIN_ROUTES.has(tag) && currentUser?.role !== 'admin') {
+    navigateTo('/');
+    return;
+  }
 
   if (STANDALONE_ROUTES.has(tag)) {
     // Standalone pages render without the app shell

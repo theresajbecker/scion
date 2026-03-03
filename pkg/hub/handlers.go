@@ -4229,18 +4229,22 @@ func (s *Server) resolveEnvSecretAccess(w http.ResponseWriter, r *http.Request, 
 		return "", false
 
 	case store.ScopeHub:
-		// Hub scope: any authenticated identity can read, only admin users can write.
+		// Hub scope: only admin users can read or write.
+		// Agents and brokers retain read access for env/secret injection.
 		identity := GetIdentityFromContext(ctx)
 		if identity == nil {
 			Unauthorized(w)
 			return "", false
 		}
-		if isWrite {
-			userIdent, ok := identity.(UserIdentity)
-			if !ok || userIdent.Role() != store.UserRoleAdmin {
+		if userIdent, ok := identity.(UserIdentity); ok {
+			if userIdent.Role() != store.UserRoleAdmin {
 				Forbidden(w)
 				return "", false
 			}
+		} else if isWrite {
+			// Non-user identities (agents, brokers) can only read.
+			Forbidden(w)
+			return "", false
 		}
 		return store.ScopeIDHub, true
 

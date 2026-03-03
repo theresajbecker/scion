@@ -53,10 +53,6 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/brokers', label: 'Brokers', icon: 'hdd-rack' },
     ],
   },
-  {
-    title: 'System',
-    items: [{ path: '/settings', label: 'Settings', icon: 'gear' }],
-  },
 ];
 
 /**
@@ -65,6 +61,7 @@ const NAV_SECTIONS: NavSection[] = [
 const ADMIN_SECTION: NavSection = {
   title: 'Admin',
   items: [
+    { path: '/settings', label: 'Hub Settings', icon: 'gear' },
     { path: '/admin/users', label: 'Users', icon: 'people' },
     { path: '/admin/groups', label: 'Groups', icon: 'diagram-3' },
   ],
