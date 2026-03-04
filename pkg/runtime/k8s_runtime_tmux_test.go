@@ -53,6 +53,9 @@ func (m *MockHarness) InjectAgentInstructions(agentHome string, content []byte) 
 func (m *MockHarness) InjectSystemPrompt(agentHome string, content []byte) error      { return nil }
 func (m *MockHarness) GetTelemetryEnv() map[string]string                             { return nil }
 func (m *MockHarness) RequiredEnvKeys(authSelectedType string) []string               { return nil }
+func (m *MockHarness) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
+	return &api.ResolvedAuth{Method: "mock"}, nil
+}
 
 func TestKubernetesRuntime_Run_Tmux(t *testing.T) {
 	// Setup

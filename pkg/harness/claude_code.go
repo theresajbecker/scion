@@ -210,6 +210,42 @@ func (c *ClaudeCode) InjectSystemPrompt(agentHome string, content []byte) error 
 	return os.WriteFile(target, content, 0644)
 }
 
+func (c *ClaudeCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
+	// Preference order: API key → Vertex AI → error
+
+	// 1. Anthropic API key (direct)
+	if auth.AnthropicAPIKey != "" {
+		return &api.ResolvedAuth{
+			Method: "anthropic-api-key",
+			EnvVars: map[string]string{
+				"ANTHROPIC_API_KEY": auth.AnthropicAPIKey,
+			},
+		}, nil
+	}
+
+	// 2. Vertex AI (requires ADC + project + region)
+	if auth.GoogleAppCredentials != "" && auth.GoogleCloudProject != "" && auth.GoogleCloudRegion != "" {
+		adcContainerPath := "~/.config/gcp/application_default_credentials.json"
+		return &api.ResolvedAuth{
+			Method: "vertex-ai",
+			EnvVars: map[string]string{
+				"CLAUDE_CODE_USE_VERTEX":        "1",
+				"CLOUD_ML_REGION":               auth.GoogleCloudRegion,
+				"ANTHROPIC_VERTEX_PROJECT_ID":   auth.GoogleCloudProject,
+				"GOOGLE_APPLICATION_CREDENTIALS": adcContainerPath,
+			},
+			Files: []api.FileMapping{
+				{
+					SourcePath:    auth.GoogleAppCredentials,
+					ContainerPath: adcContainerPath,
+				},
+			},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("claude: no valid auth method found; set ANTHROPIC_API_KEY for direct API access, or provide GOOGLE_APPLICATION_CREDENTIALS + GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_REGION for Vertex AI")
+}
+
 // loadSystemPrompt reads the system prompt file from agentHome and returns
 // its content if valid (non-empty and non-placeholder). Returns empty string
 // if the file doesn't exist or contains only placeholder text.

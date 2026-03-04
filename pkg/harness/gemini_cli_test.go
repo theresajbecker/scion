@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ptone/scion-agent/pkg/api"
 )
 
 func TestGeminiDiscoverAuth(t *testing.T) {
@@ -229,6 +231,223 @@ func TestGeminiRequiredEnvKeys(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitAPIKey(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{
+		SelectedType: "gemini-api-key",
+		GeminiAPIKey: "test-key",
+	}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "gemini-api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "gemini-api-key")
+	}
+	if result.EnvVars["GEMINI_API_KEY"] != "test-key" {
+		t.Errorf("GEMINI_API_KEY = %q, want %q", result.EnvVars["GEMINI_API_KEY"], "test-key")
+	}
+	if result.EnvVars["GEMINI_DEFAULT_AUTH_TYPE"] != "gemini-api-key" {
+		t.Errorf("GEMINI_DEFAULT_AUTH_TYPE = %q, want %q", result.EnvVars["GEMINI_DEFAULT_AUTH_TYPE"], "gemini-api-key")
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitAPIKeyFallbackGoogle(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{
+		SelectedType: "gemini-api-key",
+		GoogleAPIKey: "google-key",
+	}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.EnvVars["GOOGLE_API_KEY"] != "google-key" {
+		t.Errorf("GOOGLE_API_KEY = %q, want %q", result.EnvVars["GOOGLE_API_KEY"], "google-key")
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitAPIKeyMissing(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{SelectedType: "gemini-api-key"}
+	_, err := g.ResolveAuth(auth)
+	if err == nil {
+		t.Fatal("expected error for explicit api-key with no key")
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitOAuth(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{
+		SelectedType:     "oauth-personal",
+		OAuthCreds:       "/path/to/oauth.json",
+		GoogleCloudProject: "proj",
+	}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "oauth-personal" {
+		t.Errorf("Method = %q, want %q", result.Method, "oauth-personal")
+	}
+	if len(result.Files) != 1 {
+		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
+	}
+	if result.EnvVars["GOOGLE_CLOUD_PROJECT"] != "proj" {
+		t.Errorf("GOOGLE_CLOUD_PROJECT = %q, want %q", result.EnvVars["GOOGLE_CLOUD_PROJECT"], "proj")
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitOAuthMissing(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{SelectedType: "oauth-personal"}
+	_, err := g.ResolveAuth(auth)
+	if err == nil {
+		t.Fatal("expected error for explicit oauth-personal with no creds")
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitVertexAI(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{
+		SelectedType:         "vertex-ai",
+		GoogleCloudProject:   "proj",
+		GoogleCloudRegion:    "us-east1",
+		GoogleAppCredentials: "/path/to/adc.json",
+	}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "vertex-ai" {
+		t.Errorf("Method = %q, want %q", result.Method, "vertex-ai")
+	}
+	if result.EnvVars["GOOGLE_CLOUD_PROJECT"] != "proj" {
+		t.Errorf("GOOGLE_CLOUD_PROJECT = %q, want %q", result.EnvVars["GOOGLE_CLOUD_PROJECT"], "proj")
+	}
+	if result.EnvVars["GOOGLE_CLOUD_REGION"] != "us-east1" {
+		t.Errorf("GOOGLE_CLOUD_REGION = %q, want %q", result.EnvVars["GOOGLE_CLOUD_REGION"], "us-east1")
+	}
+	if len(result.Files) != 1 {
+		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitVertexMissingProject(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{SelectedType: "vertex-ai"}
+	_, err := g.ResolveAuth(auth)
+	if err == nil {
+		t.Fatal("expected error for explicit vertex-ai with no project")
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitComputeDefault(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{
+		SelectedType:         "compute-default-credentials",
+		GoogleAppCredentials: "/path/to/adc.json",
+	}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "compute-default-credentials" {
+		t.Errorf("Method = %q, want %q", result.Method, "compute-default-credentials")
+	}
+	if len(result.Files) != 1 {
+		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
+	}
+}
+
+func TestGeminiResolveAuth_ExplicitComputeDefaultNoADC(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{SelectedType: "compute-default-credentials"}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "compute-default-credentials" {
+		t.Errorf("Method = %q, want %q", result.Method, "compute-default-credentials")
+	}
+	if len(result.Files) != 0 {
+		t.Errorf("expected no file mappings without ADC, got %d", len(result.Files))
+	}
+}
+
+func TestGeminiResolveAuth_UnknownType(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{SelectedType: "foobar"}
+	_, err := g.ResolveAuth(auth)
+	if err == nil {
+		t.Fatal("expected error for unknown selected type")
+	}
+	if !strings.Contains(err.Error(), "foobar") {
+		t.Errorf("error should mention the unknown type: %v", err)
+	}
+}
+
+func TestGeminiResolveAuth_AutoDetectAPIKey(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{GeminiAPIKey: "auto-key"}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "gemini-api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "gemini-api-key")
+	}
+}
+
+func TestGeminiResolveAuth_AutoDetectADC(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{GoogleAppCredentials: "/path/to/adc.json"}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "compute-default-credentials" {
+		t.Errorf("Method = %q, want %q", result.Method, "compute-default-credentials")
+	}
+}
+
+func TestGeminiResolveAuth_AutoDetectOAuth(t *testing.T) {
+	g := &GeminiCLI{}
+	auth := api.AuthConfig{OAuthCreds: "/path/to/oauth.json"}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "oauth-personal" {
+		t.Errorf("Method = %q, want %q", result.Method, "oauth-personal")
+	}
+}
+
+func TestGeminiResolveAuth_AutoDetectPriority(t *testing.T) {
+	g := &GeminiCLI{}
+	// API key should win over ADC and OAuth
+	auth := api.AuthConfig{
+		GeminiAPIKey:         "key",
+		GoogleAppCredentials: "/adc.json",
+		OAuthCreds:           "/oauth.json",
+	}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "gemini-api-key" {
+		t.Errorf("API key should win; Method = %q, want %q", result.Method, "gemini-api-key")
+	}
+}
+
+func TestGeminiResolveAuth_NoCreds(t *testing.T) {
+	g := &GeminiCLI{}
+	_, err := g.ResolveAuth(api.AuthConfig{})
+	if err == nil {
+		t.Fatal("expected error for empty AuthConfig")
 	}
 }
 

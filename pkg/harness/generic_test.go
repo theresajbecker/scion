@@ -126,6 +126,83 @@ func TestGenericRequiredEnvKeys(t *testing.T) {
 	}
 }
 
+func TestGenericResolveAuth_EmptyConfig(t *testing.T) {
+	g := &Generic{}
+	result, err := g.ResolveAuth(api.AuthConfig{})
+	if err != nil {
+		t.Fatalf("generic should never error: %v", err)
+	}
+	if result.Method != "passthrough" {
+		t.Errorf("Method = %q, want %q", result.Method, "passthrough")
+	}
+	if len(result.EnvVars) != 0 {
+		t.Errorf("expected empty EnvVars for empty config, got %v", result.EnvVars)
+	}
+	if len(result.Files) != 0 {
+		t.Errorf("expected empty Files for empty config, got %d", len(result.Files))
+	}
+}
+
+func TestGenericResolveAuth_AllCreds(t *testing.T) {
+	g := &Generic{}
+	auth := api.AuthConfig{
+		AnthropicAPIKey:      "anthropic",
+		GeminiAPIKey:         "gemini",
+		GoogleAPIKey:         "google",
+		OpenAIAPIKey:         "openai",
+		CodexAPIKey:          "codex",
+		GoogleCloudProject:   "proj",
+		GoogleCloudRegion:    "region",
+		GoogleAppCredentials: "/adc.json",
+		OAuthCreds:           "/oauth.json",
+		CodexAuthFile:        "/codex-auth.json",
+		OpenCodeAuthFile:     "/opencode-auth.json",
+	}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("generic should never error: %v", err)
+	}
+
+	expectedEnvVars := map[string]string{
+		"ANTHROPIC_API_KEY":              "anthropic",
+		"GEMINI_API_KEY":                 "gemini",
+		"GOOGLE_API_KEY":                 "google",
+		"OPENAI_API_KEY":                 "openai",
+		"CODEX_API_KEY":                  "codex",
+		"GOOGLE_CLOUD_PROJECT":           "proj",
+		"GOOGLE_CLOUD_REGION":            "region",
+		"GOOGLE_APPLICATION_CREDENTIALS": "~/.config/gcp/application_default_credentials.json",
+	}
+	for k, want := range expectedEnvVars {
+		if got := result.EnvVars[k]; got != want {
+			t.Errorf("EnvVars[%q] = %q, want %q", k, got, want)
+		}
+	}
+
+	// Should have 4 file mappings: ADC, OAuth, Codex, OpenCode
+	if len(result.Files) != 4 {
+		t.Fatalf("expected 4 file mappings, got %d", len(result.Files))
+	}
+}
+
+func TestGenericResolveAuth_PartialCreds(t *testing.T) {
+	g := &Generic{}
+	auth := api.AuthConfig{AnthropicAPIKey: "key-only"}
+	result, err := g.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("generic should never error: %v", err)
+	}
+	if result.EnvVars["ANTHROPIC_API_KEY"] != "key-only" {
+		t.Errorf("ANTHROPIC_API_KEY = %q, want %q", result.EnvVars["ANTHROPIC_API_KEY"], "key-only")
+	}
+	if len(result.EnvVars) != 1 {
+		t.Errorf("expected 1 env var, got %d: %v", len(result.EnvVars), result.EnvVars)
+	}
+	if len(result.Files) != 0 {
+		t.Errorf("expected no files, got %d", len(result.Files))
+	}
+}
+
 func TestGenericInjectSystemPrompt(t *testing.T) {
 	agentHome := t.TempDir()
 	g := &Generic{}

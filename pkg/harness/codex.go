@@ -134,6 +134,42 @@ func (c *Codex) RequiredEnvKeys(authSelectedType string) []string {
 	return nil
 }
 
+func (c *Codex) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
+	// Preference order: CodexAPIKey → OpenAIAPIKey → CodexAuthFile → error
+
+	if auth.CodexAPIKey != "" {
+		return &api.ResolvedAuth{
+			Method: "codex-api-key",
+			EnvVars: map[string]string{
+				"CODEX_API_KEY": auth.CodexAPIKey,
+			},
+		}, nil
+	}
+
+	if auth.OpenAIAPIKey != "" {
+		return &api.ResolvedAuth{
+			Method: "openai-api-key",
+			EnvVars: map[string]string{
+				"OPENAI_API_KEY": auth.OpenAIAPIKey,
+			},
+		}, nil
+	}
+
+	if auth.CodexAuthFile != "" {
+		return &api.ResolvedAuth{
+			Method: "codex-auth-file",
+			Files: []api.FileMapping{
+				{
+					SourcePath:    auth.CodexAuthFile,
+					ContainerPath: "~/.codex/auth.json",
+				},
+			},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("codex: no valid auth method found; set CODEX_API_KEY or OPENAI_API_KEY, or provide auth credentials at ~/.codex/auth.json")
+}
+
 func (c *Codex) InjectSystemPrompt(agentHome string, content []byte) error {
 	// TODO: Codex has no native system prompt support. System prompt injection is
 	// not yet implemented for this harness.

@@ -354,6 +354,107 @@ func TestClaudeGetCommand_SystemPromptWithBaseArgs(t *testing.T) {
 	}
 }
 
+func TestClaudeResolveAuth_APIKey(t *testing.T) {
+	c := &ClaudeCode{}
+	auth := api.AuthConfig{AnthropicAPIKey: "sk-ant-test"}
+	result, err := c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "anthropic-api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "anthropic-api-key")
+	}
+	if result.EnvVars["ANTHROPIC_API_KEY"] != "sk-ant-test" {
+		t.Errorf("ANTHROPIC_API_KEY = %q, want %q", result.EnvVars["ANTHROPIC_API_KEY"], "sk-ant-test")
+	}
+	if len(result.Files) != 0 {
+		t.Errorf("expected no files, got %d", len(result.Files))
+	}
+}
+
+func TestClaudeResolveAuth_VertexAI(t *testing.T) {
+	c := &ClaudeCode{}
+	auth := api.AuthConfig{
+		GoogleAppCredentials: "/path/to/adc.json",
+		GoogleCloudProject:   "my-project",
+		GoogleCloudRegion:    "us-central1",
+	}
+	result, err := c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "vertex-ai" {
+		t.Errorf("Method = %q, want %q", result.Method, "vertex-ai")
+	}
+	if result.EnvVars["CLAUDE_CODE_USE_VERTEX"] != "1" {
+		t.Errorf("CLAUDE_CODE_USE_VERTEX = %q, want %q", result.EnvVars["CLAUDE_CODE_USE_VERTEX"], "1")
+	}
+	if result.EnvVars["CLOUD_ML_REGION"] != "us-central1" {
+		t.Errorf("CLOUD_ML_REGION = %q, want %q", result.EnvVars["CLOUD_ML_REGION"], "us-central1")
+	}
+	if result.EnvVars["ANTHROPIC_VERTEX_PROJECT_ID"] != "my-project" {
+		t.Errorf("ANTHROPIC_VERTEX_PROJECT_ID = %q, want %q", result.EnvVars["ANTHROPIC_VERTEX_PROJECT_ID"], "my-project")
+	}
+	if len(result.Files) != 1 {
+		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
+	}
+	if result.Files[0].SourcePath != "/path/to/adc.json" {
+		t.Errorf("SourcePath = %q, want %q", result.Files[0].SourcePath, "/path/to/adc.json")
+	}
+}
+
+func TestClaudeResolveAuth_APIKeyWinsOverVertex(t *testing.T) {
+	c := &ClaudeCode{}
+	auth := api.AuthConfig{
+		AnthropicAPIKey:      "sk-ant-key",
+		GoogleAppCredentials: "/path/to/adc.json",
+		GoogleCloudProject:   "my-project",
+		GoogleCloudRegion:    "us-central1",
+	}
+	result, err := c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "anthropic-api-key" {
+		t.Errorf("API key should win over Vertex; Method = %q, want %q", result.Method, "anthropic-api-key")
+	}
+}
+
+func TestClaudeResolveAuth_PartialVertex(t *testing.T) {
+	c := &ClaudeCode{}
+
+	// Missing region
+	auth := api.AuthConfig{
+		GoogleAppCredentials: "/path/to/adc.json",
+		GoogleCloudProject:   "my-project",
+	}
+	_, err := c.ResolveAuth(auth)
+	if err == nil {
+		t.Fatal("expected error for partial Vertex creds (missing region)")
+	}
+
+	// Missing project
+	auth = api.AuthConfig{
+		GoogleAppCredentials: "/path/to/adc.json",
+		GoogleCloudRegion:    "us-central1",
+	}
+	_, err = c.ResolveAuth(auth)
+	if err == nil {
+		t.Fatal("expected error for partial Vertex creds (missing project)")
+	}
+}
+
+func TestClaudeResolveAuth_NoCreds(t *testing.T) {
+	c := &ClaudeCode{}
+	_, err := c.ResolveAuth(api.AuthConfig{})
+	if err == nil {
+		t.Fatal("expected error for empty AuthConfig")
+	}
+	if !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") {
+		t.Errorf("error should mention ANTHROPIC_API_KEY: %v", err)
+	}
+}
+
 func TestClaudeGetCommand_SystemPromptWithResume(t *testing.T) {
 	agentHome := t.TempDir()
 	c := &ClaudeCode{}

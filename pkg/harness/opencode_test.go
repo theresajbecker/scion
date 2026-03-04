@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ptone/scion-agent/pkg/api"
 )
 
 func TestOpenCodeInjectAgentInstructions(t *testing.T) {
@@ -80,6 +82,92 @@ func TestOpenCodeInjectSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(content, "# Existing Instructions") {
 		t.Error("expected original agent instructions to be preserved")
+	}
+}
+
+func TestOpenCodeResolveAuth_AnthropicAPIKey(t *testing.T) {
+	o := &OpenCode{}
+	auth := api.AuthConfig{AnthropicAPIKey: "sk-ant-test"}
+	result, err := o.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "anthropic-api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "anthropic-api-key")
+	}
+	if result.EnvVars["ANTHROPIC_API_KEY"] != "sk-ant-test" {
+		t.Errorf("ANTHROPIC_API_KEY = %q, want %q", result.EnvVars["ANTHROPIC_API_KEY"], "sk-ant-test")
+	}
+}
+
+func TestOpenCodeResolveAuth_OpenAIAPIKey(t *testing.T) {
+	o := &OpenCode{}
+	auth := api.AuthConfig{OpenAIAPIKey: "sk-openai-test"}
+	result, err := o.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "openai-api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "openai-api-key")
+	}
+	if result.EnvVars["OPENAI_API_KEY"] != "sk-openai-test" {
+		t.Errorf("OPENAI_API_KEY = %q, want %q", result.EnvVars["OPENAI_API_KEY"], "sk-openai-test")
+	}
+}
+
+func TestOpenCodeResolveAuth_AuthFile(t *testing.T) {
+	o := &OpenCode{}
+	auth := api.AuthConfig{OpenCodeAuthFile: "/home/user/.local/share/opencode/auth.json"}
+	result, err := o.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "opencode-auth-file" {
+		t.Errorf("Method = %q, want %q", result.Method, "opencode-auth-file")
+	}
+	if len(result.Files) != 1 {
+		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
+	}
+}
+
+func TestOpenCodeResolveAuth_PreferenceOrder(t *testing.T) {
+	o := &OpenCode{}
+	// AnthropicAPIKey should win over OpenAIAPIKey and auth file
+	auth := api.AuthConfig{
+		AnthropicAPIKey:  "anthropic",
+		OpenAIAPIKey:     "openai",
+		OpenCodeAuthFile: "/auth.json",
+	}
+	result, err := o.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "anthropic-api-key" {
+		t.Errorf("AnthropicAPIKey should win; Method = %q, want %q", result.Method, "anthropic-api-key")
+	}
+
+	// OpenAIAPIKey should win over auth file
+	auth = api.AuthConfig{
+		OpenAIAPIKey:     "openai",
+		OpenCodeAuthFile: "/auth.json",
+	}
+	result, err = o.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "openai-api-key" {
+		t.Errorf("OpenAIAPIKey should win over auth file; Method = %q, want %q", result.Method, "openai-api-key")
+	}
+}
+
+func TestOpenCodeResolveAuth_NoCreds(t *testing.T) {
+	o := &OpenCode{}
+	_, err := o.ResolveAuth(api.AuthConfig{})
+	if err == nil {
+		t.Fatal("expected error for empty AuthConfig")
+	}
+	if !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") {
+		t.Errorf("error should mention ANTHROPIC_API_KEY: %v", err)
 	}
 }
 

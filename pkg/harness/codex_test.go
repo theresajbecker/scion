@@ -17,6 +17,7 @@ package harness
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ptone/scion-agent/pkg/api"
@@ -136,6 +137,95 @@ func TestCodexRequiredEnvKeys(t *testing.T) {
 	got := c.RequiredEnvKeys("")
 	if got != nil {
 		t.Errorf("RequiredEnvKeys() = %v, want nil", got)
+	}
+}
+
+func TestCodexResolveAuth_CodexAPIKey(t *testing.T) {
+	c := &Codex{}
+	auth := api.AuthConfig{CodexAPIKey: "codex-key"}
+	result, err := c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "codex-api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "codex-api-key")
+	}
+	if result.EnvVars["CODEX_API_KEY"] != "codex-key" {
+		t.Errorf("CODEX_API_KEY = %q, want %q", result.EnvVars["CODEX_API_KEY"], "codex-key")
+	}
+}
+
+func TestCodexResolveAuth_OpenAIAPIKey(t *testing.T) {
+	c := &Codex{}
+	auth := api.AuthConfig{OpenAIAPIKey: "openai-key"}
+	result, err := c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "openai-api-key" {
+		t.Errorf("Method = %q, want %q", result.Method, "openai-api-key")
+	}
+	if result.EnvVars["OPENAI_API_KEY"] != "openai-key" {
+		t.Errorf("OPENAI_API_KEY = %q, want %q", result.EnvVars["OPENAI_API_KEY"], "openai-key")
+	}
+}
+
+func TestCodexResolveAuth_AuthFile(t *testing.T) {
+	c := &Codex{}
+	auth := api.AuthConfig{CodexAuthFile: "/home/user/.codex/auth.json"}
+	result, err := c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "codex-auth-file" {
+		t.Errorf("Method = %q, want %q", result.Method, "codex-auth-file")
+	}
+	if len(result.Files) != 1 {
+		t.Fatalf("expected 1 file mapping, got %d", len(result.Files))
+	}
+	if result.Files[0].SourcePath != "/home/user/.codex/auth.json" {
+		t.Errorf("SourcePath = %q, want %q", result.Files[0].SourcePath, "/home/user/.codex/auth.json")
+	}
+}
+
+func TestCodexResolveAuth_PreferenceOrder(t *testing.T) {
+	c := &Codex{}
+	// CodexAPIKey should win over OpenAIAPIKey and auth file
+	auth := api.AuthConfig{
+		CodexAPIKey:   "codex",
+		OpenAIAPIKey:  "openai",
+		CodexAuthFile: "/auth.json",
+	}
+	result, err := c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "codex-api-key" {
+		t.Errorf("CodexAPIKey should win; Method = %q, want %q", result.Method, "codex-api-key")
+	}
+
+	// OpenAIAPIKey should win over auth file
+	auth = api.AuthConfig{
+		OpenAIAPIKey:  "openai",
+		CodexAuthFile: "/auth.json",
+	}
+	result, err = c.ResolveAuth(auth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "openai-api-key" {
+		t.Errorf("OpenAIAPIKey should win over auth file; Method = %q, want %q", result.Method, "openai-api-key")
+	}
+}
+
+func TestCodexResolveAuth_NoCreds(t *testing.T) {
+	c := &Codex{}
+	_, err := c.ResolveAuth(api.AuthConfig{})
+	if err == nil {
+		t.Fatal("expected error for empty AuthConfig")
+	}
+	if !strings.Contains(err.Error(), "CODEX_API_KEY") {
+		t.Errorf("error should mention CODEX_API_KEY: %v", err)
 	}
 }
 

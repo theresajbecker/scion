@@ -131,6 +131,42 @@ func (o *OpenCode) RequiredEnvKeys(authSelectedType string) []string {
 	return []string{"ANTHROPIC_API_KEY"}
 }
 
+func (o *OpenCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
+	// Preference order: AnthropicAPIKey → OpenAIAPIKey → OpenCodeAuthFile → error
+
+	if auth.AnthropicAPIKey != "" {
+		return &api.ResolvedAuth{
+			Method: "anthropic-api-key",
+			EnvVars: map[string]string{
+				"ANTHROPIC_API_KEY": auth.AnthropicAPIKey,
+			},
+		}, nil
+	}
+
+	if auth.OpenAIAPIKey != "" {
+		return &api.ResolvedAuth{
+			Method: "openai-api-key",
+			EnvVars: map[string]string{
+				"OPENAI_API_KEY": auth.OpenAIAPIKey,
+			},
+		}, nil
+	}
+
+	if auth.OpenCodeAuthFile != "" {
+		return &api.ResolvedAuth{
+			Method: "opencode-auth-file",
+			Files: []api.FileMapping{
+				{
+					SourcePath:    auth.OpenCodeAuthFile,
+					ContainerPath: "~/.local/share/opencode/auth.json",
+				},
+			},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("opencode: no valid auth method found; set ANTHROPIC_API_KEY or OPENAI_API_KEY, or provide auth credentials at ~/.local/share/opencode/auth.json")
+}
+
 func (o *OpenCode) InjectSystemPrompt(agentHome string, content []byte) error {
 	// OpenCode has no native system prompt support — downgrade by prepending to AGENTS.md
 	agentsPath := filepath.Join(agentHome, "AGENTS.md")

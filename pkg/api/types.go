@@ -318,6 +318,22 @@ type AuthConfig struct {
 	SelectedType string
 }
 
+// ResolvedAuth represents the single best auth method selected by a harness's
+// ResolveAuth method. It contains everything needed to inject credentials into
+// an agent container.
+type ResolvedAuth struct {
+	Method  string            // e.g. "anthropic-api-key", "vertex-ai", "passthrough"
+	EnvVars map[string]string // env vars to inject into container
+	Files   []FileMapping     // files to copy/mount into container
+}
+
+// FileMapping describes a credential file that needs to be propagated from the
+// host into an agent container.
+type FileMapping struct {
+	SourcePath    string // absolute host path
+	ContainerPath string // target path in container (~ = home placeholder)
+}
+
 // AgentInfo contains metadata about a scion agent.
 // It supports both local/solo mode and hosted/distributed mode.
 type AgentInfo struct {

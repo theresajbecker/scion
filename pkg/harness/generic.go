@@ -189,6 +189,65 @@ func (g *Generic) RequiredEnvKeys(authSelectedType string) []string {
 	return nil
 }
 
+func (g *Generic) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
+	// Generic harness is a passthrough — map all available creds, never error.
+	result := &api.ResolvedAuth{
+		Method:  "passthrough",
+		EnvVars: make(map[string]string),
+	}
+
+	if auth.AnthropicAPIKey != "" {
+		result.EnvVars["ANTHROPIC_API_KEY"] = auth.AnthropicAPIKey
+	}
+	if auth.GeminiAPIKey != "" {
+		result.EnvVars["GEMINI_API_KEY"] = auth.GeminiAPIKey
+	}
+	if auth.GoogleAPIKey != "" {
+		result.EnvVars["GOOGLE_API_KEY"] = auth.GoogleAPIKey
+	}
+	if auth.OpenAIAPIKey != "" {
+		result.EnvVars["OPENAI_API_KEY"] = auth.OpenAIAPIKey
+	}
+	if auth.CodexAPIKey != "" {
+		result.EnvVars["CODEX_API_KEY"] = auth.CodexAPIKey
+	}
+	if auth.GoogleCloudProject != "" {
+		result.EnvVars["GOOGLE_CLOUD_PROJECT"] = auth.GoogleCloudProject
+	}
+	if auth.GoogleCloudRegion != "" {
+		result.EnvVars["GOOGLE_CLOUD_REGION"] = auth.GoogleCloudRegion
+	}
+
+	if auth.GoogleAppCredentials != "" {
+		adcContainerPath := "~/.config/gcp/application_default_credentials.json"
+		result.EnvVars["GOOGLE_APPLICATION_CREDENTIALS"] = adcContainerPath
+		result.Files = append(result.Files, api.FileMapping{
+			SourcePath:    auth.GoogleAppCredentials,
+			ContainerPath: adcContainerPath,
+		})
+	}
+	if auth.OAuthCreds != "" {
+		result.Files = append(result.Files, api.FileMapping{
+			SourcePath:    auth.OAuthCreds,
+			ContainerPath: "~/.scion/oauth_creds.json",
+		})
+	}
+	if auth.CodexAuthFile != "" {
+		result.Files = append(result.Files, api.FileMapping{
+			SourcePath:    auth.CodexAuthFile,
+			ContainerPath: "~/.codex/auth.json",
+		})
+	}
+	if auth.OpenCodeAuthFile != "" {
+		result.Files = append(result.Files, api.FileMapping{
+			SourcePath:    auth.OpenCodeAuthFile,
+			ContainerPath: "~/.local/share/opencode/auth.json",
+		})
+	}
+
+	return result, nil
+}
+
 func (g *Generic) InjectSystemPrompt(agentHome string, content []byte) error {
 	target := filepath.Join(agentHome, ".scion", "system_prompt.md")
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {

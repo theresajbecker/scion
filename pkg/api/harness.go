@@ -64,4 +64,10 @@ type Harness interface {
 	// harness to vary requirements by authentication method (e.g., "gemini-api-key"
 	// vs "vertex-ai"). Returns nil if no env keys are required.
 	RequiredEnvKeys(authSelectedType string) []string
+
+	// ResolveAuth selects the single best authentication method from a populated
+	// AuthConfig and returns the env vars and file mappings needed to inject
+	// credentials into the agent container. Returns an error with an actionable
+	// message if no valid auth method is available.
+	ResolveAuth(auth AuthConfig) (*ResolvedAuth, error)
 }

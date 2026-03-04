@@ -308,7 +308,7 @@ For file-type secrets, the Hub stores base64-encoded content and the runtime pro
 - Implement `GatherAuth()` in `pkg/harness/auth.go`
 - Write tests (env vars, project/region fallbacks, file discovery, precedence)
 
-### Step 3: Implement ResolveAuth Per Harness
+### Step 3: Implement ResolveAuth Per Harness ✅
 - Add `ResolveAuth(AuthConfig) (*ResolvedAuth, error)` to Harness interface
 - Implement for each harness with documented preference order
 - Add `ResolvedAuth`, `FileMapping` types to `pkg/api/types.go`
