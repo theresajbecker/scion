@@ -736,9 +736,9 @@ export class ScionPageAgentDetail extends LitElement {
     }
 
     return html`
-      <a href="/agents" class="back-link">
+      <a href="${this.grove ? `/groves/${this.grove.id}` : '/agents'}" class="back-link">
         <sl-icon name="arrow-left"></sl-icon>
-        Back to Agents
+        ${this.grove ? `To ${this.grove.name}` : 'Back to Agents'}
       </a>
 
       <div class="header">
@@ -1042,9 +1042,9 @@ export class ScionPageAgentDetail extends LitElement {
 
   private renderError() {
     return html`
-      <a href="/agents" class="back-link">
+      <a href="${this.grove ? `/groves/${this.grove.id}` : '/agents'}" class="back-link">
         <sl-icon name="arrow-left"></sl-icon>
-        Back to Agents
+        ${this.grove ? `To ${this.grove.name}` : 'Back to Agents'}
       </a>
 
       <div class="error-state">
