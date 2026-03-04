@@ -160,37 +160,37 @@ export class ScionStatusBadge extends LitElement {
 
     /* Size variants */
     .badge.small {
-      font-size: 0.6875rem;
+      font-size: 0.8125rem;
       padding: 0.125rem 0.5rem;
       gap: 0.25rem;
     }
 
     .badge.medium {
-      font-size: 0.75rem;
+      font-size: 0.875rem;
     }
 
     .badge.large {
-      font-size: 0.875rem;
+      font-size: 1rem;
       padding: 0.375rem 0.75rem;
     }
 
     .badge sl-icon {
-      font-size: 0.875em;
+      font-size: 1.125em;
     }
 
     .badge .emoji {
-      font-size: 0.875em;
+      font-size: 1.125em;
       line-height: 1;
     }
 
     .badge.small sl-icon,
     .badge.small .emoji {
-      font-size: 0.75em;
+      font-size: 1em;
     }
 
     .badge.large sl-icon,
     .badge.large .emoji {
-      font-size: 1em;
+      font-size: 1.25em;
     }
 
     /* Variant colors */
