@@ -7,6 +7,7 @@ Copyright 2025 The Scion Authors.
 package telemetry
 
 import (
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
@@ -120,6 +121,11 @@ func LoadConfig() *Config {
 		CloudProvider:      os.Getenv(EnvCloudProvider),
 	}
 
+	// Auto-resolve project ID from GCP credentials file if not explicitly set
+	if cfg.ProjectID == "" && cfg.GCPCredentialsFile != "" {
+		cfg.ProjectID = readProjectIDFromCredentials(cfg.GCPCredentialsFile)
+	}
+
 	// Apply default exclude list if not explicitly set
 	if len(cfg.Filter.Exclude) == 0 && os.Getenv(EnvFilterExclude) == "" {
 		cfg.Filter.Exclude = DefaultFilterExclude
@@ -139,11 +145,42 @@ func LoadConfig() *Config {
 }
 
 // IsCloudConfigured returns true if cloud forwarding is properly configured.
+// For GCP provider, only credentials file is needed (no endpoint required).
+// For generic OTLP, an endpoint must be specified.
 func (c *Config) IsCloudConfigured() bool {
 	if c == nil {
 		return false
 	}
-	return c.CloudEnabled && c.Endpoint != ""
+	if !c.CloudEnabled {
+		return false
+	}
+	// GCP mode: credentials file is sufficient (endpoint not needed)
+	if c.CloudProvider == "gcp" && c.GCPCredentialsFile != "" {
+		return true
+	}
+	// Generic OTLP mode: endpoint is required
+	return c.Endpoint != ""
+}
+
+// IsGCP returns true if the cloud provider is configured for GCP-native export.
+func (c *Config) IsGCP() bool {
+	return c != nil && c.CloudProvider == "gcp" && c.GCPCredentialsFile != ""
+}
+
+// readProjectIDFromCredentials reads the project_id field from a GCP service
+// account credentials JSON file. Returns empty string on any error.
+func readProjectIDFromCredentials(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var creds struct {
+		ProjectID string `json:"project_id"`
+	}
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return ""
+	}
+	return creds.ProjectID
 }
 
 // parseBoolEnv parses a boolean environment variable with a default value.

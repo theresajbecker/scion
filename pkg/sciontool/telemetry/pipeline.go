@@ -70,7 +70,11 @@ func (p *Pipeline) Start(ctx context.Context) error {
 			// Continue without cloud export - receiver can still work for local debugging
 		} else {
 			p.exporter = exporter
-			log.Info("Cloud exporter initialized (project: %s)", p.config.ProjectID)
+			mode := "OTLP"
+			if p.config.IsGCP() {
+				mode = "GCP-native"
+			}
+			log.Info("Cloud exporter initialized (%s, project: %s)", mode, p.config.ProjectID)
 		}
 	} else {
 		log.Debug("Cloud export not configured - telemetry will only be received locally")

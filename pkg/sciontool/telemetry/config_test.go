@@ -196,6 +196,200 @@ func TestParseCSVEnv(t *testing.T) {
 	os.Unsetenv("TEST_CSV")
 }
 
+func TestIsCloudConfigured_GCP(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *Config
+		expected bool
+	}{
+		{
+			name: "gcp with credentials",
+			config: &Config{
+				CloudEnabled:       true,
+				CloudProvider:      "gcp",
+				GCPCredentialsFile: "/path/to/creds.json",
+			},
+			expected: true,
+		},
+		{
+			name: "gcp without credentials",
+			config: &Config{
+				CloudEnabled:  true,
+				CloudProvider: "gcp",
+			},
+			expected: false,
+		},
+		{
+			name: "gcp disabled",
+			config: &Config{
+				CloudEnabled:       false,
+				CloudProvider:      "gcp",
+				GCPCredentialsFile: "/path/to/creds.json",
+			},
+			expected: false,
+		},
+		{
+			name: "gcp with credentials and no endpoint is OK",
+			config: &Config{
+				CloudEnabled:       true,
+				CloudProvider:      "gcp",
+				GCPCredentialsFile: "/path/to/creds.json",
+				Endpoint:           "", // no endpoint needed for GCP
+			},
+			expected: true,
+		},
+		{
+			name: "generic without endpoint",
+			config: &Config{
+				CloudEnabled: true,
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.config.IsCloudConfigured(); got != tt.expected {
+				t.Errorf("IsCloudConfigured() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsGCP(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *Config
+		expected bool
+	}{
+		{
+			name:     "nil config",
+			config:   nil,
+			expected: false,
+		},
+		{
+			name: "gcp with creds",
+			config: &Config{
+				CloudProvider:      "gcp",
+				GCPCredentialsFile: "/path/to/creds.json",
+			},
+			expected: true,
+		},
+		{
+			name: "gcp without creds",
+			config: &Config{
+				CloudProvider: "gcp",
+			},
+			expected: false,
+		},
+		{
+			name: "not gcp",
+			config: &Config{
+				CloudProvider:      "other",
+				GCPCredentialsFile: "/path/to/creds.json",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.config.IsGCP(); got != tt.expected {
+				t.Errorf("IsGCP() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestReadProjectIDFromCredentials(t *testing.T) {
+	// Write a temp credentials file
+	tmpFile, err := os.CreateTemp("", "gcp-creds-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	credJSON := `{"type":"service_account","project_id":"test-project-123","private_key_id":"key"}`
+	if _, err := tmpFile.WriteString(credJSON); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+
+	got := readProjectIDFromCredentials(tmpFile.Name())
+	if got != "test-project-123" {
+		t.Errorf("readProjectIDFromCredentials() = %q, want %q", got, "test-project-123")
+	}
+
+	// Non-existent file
+	got = readProjectIDFromCredentials("/nonexistent/path.json")
+	if got != "" {
+		t.Errorf("readProjectIDFromCredentials(nonexistent) = %q, want empty", got)
+	}
+
+	// Invalid JSON
+	badFile, _ := os.CreateTemp("", "bad-creds-*.json")
+	defer os.Remove(badFile.Name())
+	badFile.WriteString("not json")
+	badFile.Close()
+	got = readProjectIDFromCredentials(badFile.Name())
+	if got != "" {
+		t.Errorf("readProjectIDFromCredentials(invalid) = %q, want empty", got)
+	}
+}
+
+func TestLoadConfig_ProjectIDFromCredentials(t *testing.T) {
+	clearTelemetryEnv()
+
+	// Write a temp credentials file
+	tmpFile, err := os.CreateTemp("", "gcp-creds-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	credJSON := `{"type":"service_account","project_id":"creds-project"}`
+	tmpFile.WriteString(credJSON)
+	tmpFile.Close()
+
+	// Set credentials file but NOT project ID
+	os.Setenv(EnvGCPCredentials, tmpFile.Name())
+	os.Setenv(EnvCloudProvider, "gcp")
+	defer clearTelemetryEnv()
+
+	cfg := LoadConfig()
+
+	if cfg.ProjectID != "creds-project" {
+		t.Errorf("Expected ProjectID auto-resolved from credentials, got %q", cfg.ProjectID)
+	}
+}
+
+func TestLoadConfig_ProjectIDEnvTakesPriority(t *testing.T) {
+	clearTelemetryEnv()
+
+	// Write a temp credentials file
+	tmpFile, err := os.CreateTemp("", "gcp-creds-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	credJSON := `{"type":"service_account","project_id":"creds-project"}`
+	tmpFile.WriteString(credJSON)
+	tmpFile.Close()
+
+	// Set both env var and credentials file
+	os.Setenv(EnvProjectID, "env-project")
+	os.Setenv(EnvGCPCredentials, tmpFile.Name())
+	defer clearTelemetryEnv()
+
+	cfg := LoadConfig()
+
+	// Explicit env var should win
+	if cfg.ProjectID != "env-project" {
+		t.Errorf("Expected ProjectID from env to take priority, got %q", cfg.ProjectID)
+	}
+}
+
 func TestLoadConfig_GCPDefaults(t *testing.T) {
 	clearTelemetryEnv()
 

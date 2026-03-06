@@ -1146,7 +1146,7 @@ telemetry:
   enabled: false
   cloud:
     enabled: true
-    endpoint: cloudtrace.googleapis.com:443
+    endpoint: otel-collector.example.com:4317
     protocol: grpc
 `), 0644)
 
@@ -1191,8 +1191,8 @@ telemetry:
 	}
 
 	// Verify that cloud config env vars from settings were injected
-	if got := env["SCION_OTEL_ENDPOINT"]; got != "cloudtrace.googleapis.com:443" {
-		t.Errorf("SCION_OTEL_ENDPOINT = %q, want %q", got, "cloudtrace.googleapis.com:443")
+	if got := env["SCION_OTEL_ENDPOINT"]; got != "otel-collector.example.com:4317" {
+		t.Errorf("SCION_OTEL_ENDPOINT = %q, want %q", got, "otel-collector.example.com:4317")
 	}
 	if got := env["SCION_OTEL_PROTOCOL"]; got != "grpc" {
 		t.Errorf("SCION_OTEL_PROTOCOL = %q, want %q", got, "grpc")

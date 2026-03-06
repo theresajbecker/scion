@@ -767,6 +767,9 @@ func mergeTelemetryConfig(base, override *api.TelemetryConfig) *api.TelemetryCon
 				result.Cloud.Batch.Timeout = override.Cloud.Batch.Timeout
 			}
 		}
+		if override.Cloud.Provider != "" {
+			result.Cloud.Provider = override.Cloud.Provider
+		}
 	}
 	if override.Hub != nil {
 		if result.Hub == nil {

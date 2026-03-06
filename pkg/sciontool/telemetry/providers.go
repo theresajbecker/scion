@@ -7,9 +7,9 @@ package telemetry
 import (
 	"context"
 	"fmt"
-	stdlog "log"
 	"os"
 
+	texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 )
 
@@ -30,9 +31,9 @@ type Providers struct {
 	MeterProvider  *metric.MeterProvider
 }
 
-// NewProviders creates real SDK TracerProvider and LoggerProvider that export
-// to the configured OTLP endpoint. Returns nil if config is nil, disabled,
-// or cloud is not configured.
+// NewProviders creates real SDK providers that export to the configured backend.
+// When provider=gcp, uses GCP-native trace exporter and OTLP for logs/metrics.
+// Otherwise, uses standard OTLP gRPC exporters for all signals.
 //
 // The batch parameter controls processor mode:
 //   - batch=false uses synchronous processors (for short-lived hook commands)
@@ -42,7 +43,20 @@ func NewProviders(ctx context.Context, config *Config, batch bool) (*Providers, 
 		return nil, nil
 	}
 
-	// Build resource with service name and agent/grove identifiers
+	res, err := buildResource(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if config.IsGCP() {
+		return newGCPProviders(ctx, config, res, batch)
+	}
+
+	return newOTLPProviders(ctx, config, res, batch)
+}
+
+// buildResource creates the OTel resource with service name and agent identifiers.
+func buildResource(ctx context.Context) (*resource.Resource, error) {
 	attrs := []resource.Option{
 		resource.WithAttributes(semconv.ServiceName("sciontool")),
 	}
@@ -58,17 +72,62 @@ func NewProviders(ctx context.Context, config *Config, batch bool) (*Providers, 
 	if err != nil {
 		return nil, fmt.Errorf("creating resource: %w", err)
 	}
+	return res, nil
+}
 
-	// Load GCP dial options if credentials are configured and TLS is enabled
-	var gcpDialOpts []grpc.DialOption
+// newGCPProviders creates providers using the GCP-native trace exporter.
+// Logs use OTLP to the local receiver (pipeline handles Cloud Logging forwarding).
+// Metrics use the GCP metric exporter via the SDK.
+func newGCPProviders(ctx context.Context, config *Config, res *resource.Resource, batch bool) (*Providers, error) {
+	clientOpts := []option.ClientOption{}
 	if config.GCPCredentialsFile != "" {
-		if config.Insecure {
-			stdlog.Println("[telemetry] WARNING: GCP credentials require TLS; skipping credential injection with insecure mode")
-		} else {
-			gcpDialOpts, err = loadGCPDialOptions(ctx, config.GCPCredentialsFile)
-			if err != nil {
-				return nil, fmt.Errorf("loading GCP credentials: %w", err)
-			}
+		clientOpts = append(clientOpts, option.WithCredentialsFile(config.GCPCredentialsFile))
+	}
+
+	// GCP Cloud Trace exporter
+	traceOpts := []texporter.Option{
+		texporter.WithProjectID(config.ProjectID),
+	}
+	if len(clientOpts) > 0 {
+		traceOpts = append(traceOpts, texporter.WithTraceClientOptions(clientOpts))
+	}
+	traceExporter, err := texporter.New(traceOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("creating GCP trace exporter: %w", err)
+	}
+
+	// For logs and metrics, export to the local OTLP receiver (pipeline forwards to GCP)
+	logExporter, err := otlploggrpc.New(ctx,
+		otlploggrpc.WithEndpoint(fmt.Sprintf("localhost:%d", config.GRPCPort)),
+		otlploggrpc.WithInsecure(),
+	)
+	if err != nil {
+		_ = traceExporter.Shutdown(ctx)
+		return nil, fmt.Errorf("creating log exporter: %w", err)
+	}
+
+	metricExporter, err := otlpmetricgrpc.New(ctx,
+		otlpmetricgrpc.WithEndpoint(fmt.Sprintf("localhost:%d", config.GRPCPort)),
+		otlpmetricgrpc.WithInsecure(),
+	)
+	if err != nil {
+		_ = traceExporter.Shutdown(ctx)
+		_ = logExporter.Shutdown(ctx)
+		return nil, fmt.Errorf("creating metric exporter: %w", err)
+	}
+
+	return buildProviders(res, traceExporter, logExporter, metricExporter, batch), nil
+}
+
+// newOTLPProviders creates providers using standard OTLP gRPC exporters.
+func newOTLPProviders(ctx context.Context, config *Config, res *resource.Resource, batch bool) (*Providers, error) {
+	// Load GCP dial options if credentials are configured
+	var gcpDialOpts []grpc.DialOption
+	if config.GCPCredentialsFile != "" && !config.Insecure {
+		var err error
+		gcpDialOpts, err = loadGCPDialOptions(ctx, config.GCPCredentialsFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading GCP credentials: %w", err)
 		}
 	}
 
@@ -99,7 +158,6 @@ func NewProviders(ctx context.Context, config *Config, batch bool) (*Providers, 
 	}
 	logExporter, err := otlploggrpc.New(ctx, logOpts...)
 	if err != nil {
-		// Clean up trace exporter on failure
 		_ = traceExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("creating log exporter: %w", err)
 	}
@@ -116,41 +174,46 @@ func NewProviders(ctx context.Context, config *Config, batch bool) (*Providers, 
 	}
 	metricExporter, err := otlpmetricgrpc.New(ctx, metricOpts...)
 	if err != nil {
-		// Clean up previous exporters on failure
 		_ = traceExporter.Shutdown(ctx)
 		_ = logExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("creating metric exporter: %w", err)
 	}
 
-	// Build providers with appropriate processor mode
+	return buildProviders(res, traceExporter, logExporter, metricExporter, batch), nil
+}
+
+// buildProviders constructs TracerProvider, LoggerProvider, and MeterProvider
+// from the given exporters, using either batch or sync processing.
+func buildProviders(res *resource.Resource, traceExp trace.SpanExporter, logExp log.Exporter, metricExp metric.Exporter, batch bool) *Providers {
 	var tp *trace.TracerProvider
 	var lp *log.LoggerProvider
 	var mp *metric.MeterProvider
+
 	if batch {
 		tp = trace.NewTracerProvider(
 			trace.WithResource(res),
-			trace.WithBatcher(traceExporter),
+			trace.WithBatcher(traceExp),
 		)
 		lp = log.NewLoggerProvider(
 			log.WithResource(res),
-			log.WithProcessor(log.NewBatchProcessor(logExporter)),
+			log.WithProcessor(log.NewBatchProcessor(logExp)),
 		)
 		mp = metric.NewMeterProvider(
 			metric.WithResource(res),
-			metric.WithReader(metric.NewPeriodicReader(metricExporter)),
+			metric.WithReader(metric.NewPeriodicReader(metricExp)),
 		)
 	} else {
 		tp = trace.NewTracerProvider(
 			trace.WithResource(res),
-			trace.WithSyncer(traceExporter),
+			trace.WithSyncer(traceExp),
 		)
 		lp = log.NewLoggerProvider(
 			log.WithResource(res),
-			log.WithProcessor(log.NewSimpleProcessor(logExporter)),
+			log.WithProcessor(log.NewSimpleProcessor(logExp)),
 		)
 		mp = metric.NewMeterProvider(
 			metric.WithResource(res),
-			metric.WithReader(metric.NewPeriodicReader(metricExporter)),
+			metric.WithReader(metric.NewPeriodicReader(metricExp)),
 		)
 	}
 
@@ -158,10 +221,10 @@ func NewProviders(ctx context.Context, config *Config, batch bool) (*Providers, 
 		TracerProvider: tp,
 		LoggerProvider: lp,
 		MeterProvider:  mp,
-	}, nil
+	}
 }
 
-// Shutdown flushes and shuts down both providers.
+// Shutdown flushes and shuts down all providers.
 func (p *Providers) Shutdown(ctx context.Context) error {
 	if p == nil {
 		return nil

@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"os"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -51,8 +50,15 @@ func loadGCPDialOptions(ctx context.Context, credFile string) ([]grpc.DialOption
 	return []grpc.DialOption{grpc.WithPerRPCCredentials(perRPC)}, nil
 }
 
-// CloudExporter exports traces and metrics to a cloud OTLP endpoint.
+// CloudExporter exports traces, metrics, and logs to a cloud backend.
+// It supports two modes:
+//   - GCP-native: uses Cloud Trace and Cloud Logging APIs directly
+//   - Generic OTLP: forwards raw proto data via standard OTLP gRPC/HTTP
 type CloudExporter struct {
+	// GCP-native exporter (used when provider=gcp)
+	gcpExporter *GCPExporter
+
+	// Generic OTLP exporter fields
 	traceExporter trace.SpanExporter
 	grpcClient    coltracepb.TraceServiceClient
 	metricClient  colmetricpb.MetricsServiceClient
@@ -62,8 +68,9 @@ type CloudExporter struct {
 	endpoint      string
 }
 
-// NewCloudExporter creates a new cloud trace exporter.
-// Returns nil if cloud export is not configured.
+// NewCloudExporter creates a new cloud exporter.
+// When provider=gcp, uses GCP-native APIs (Cloud Trace, Cloud Logging).
+// Otherwise, uses standard OTLP gRPC/HTTP forwarding.
 func NewCloudExporter(config *Config) (*CloudExporter, error) {
 	if !config.IsCloudConfigured() {
 		return nil, nil
@@ -74,18 +81,23 @@ func NewCloudExporter(config *Config) (*CloudExporter, error) {
 		endpoint: config.Endpoint,
 	}
 
-	if config.CloudProvider == "gcp" && config.Protocol == "http" {
-		log.Println("[telemetry] WARNING: GCP OTLP export uses gRPC; HTTP protocol may not work with GCP credentials")
+	// Use GCP-native exporters when provider=gcp
+	if config.IsGCP() {
+		gcpExp, err := NewGCPExporter(config)
+		if err != nil {
+			return nil, fmt.Errorf("creating GCP exporter: %w", err)
+		}
+		exporter.gcpExporter = gcpExp
+		return exporter, nil
 	}
 
+	// Generic OTLP mode
 	var err error
 	switch config.Protocol {
-	case "grpc":
-		err = exporter.initGRPC(config)
 	case "http":
 		err = exporter.initHTTP(config)
 	default:
-		err = exporter.initGRPC(config) // default to gRPC
+		err = exporter.initGRPC(config)
 	}
 
 	if err != nil {
@@ -95,21 +107,17 @@ func NewCloudExporter(config *Config) (*CloudExporter, error) {
 	return exporter, nil
 }
 
-// initGRPC initializes the gRPC exporter.
+// initGRPC initializes the generic OTLP gRPC exporter.
 func (e *CloudExporter) initGRPC(config *Config) error {
 	ctx := context.Background()
 
 	// Load GCP dial options if credentials are configured and TLS is enabled
 	var gcpDialOpts []grpc.DialOption
-	if config.GCPCredentialsFile != "" {
-		if config.Insecure {
-			log.Println("[telemetry] WARNING: GCP credentials require TLS; skipping credential injection with insecure mode")
-		} else {
-			var err error
-			gcpDialOpts, err = loadGCPDialOptions(ctx, config.GCPCredentialsFile)
-			if err != nil {
-				return fmt.Errorf("failed to load GCP credentials: %w", err)
-			}
+	if config.GCPCredentialsFile != "" && !config.Insecure {
+		var err error
+		gcpDialOpts, err = loadGCPDialOptions(ctx, config.GCPCredentialsFile)
+		if err != nil {
+			return fmt.Errorf("failed to load GCP credentials: %w", err)
 		}
 	}
 
@@ -125,12 +133,12 @@ func (e *CloudExporter) initGRPC(config *Config) error {
 		opts = append(opts, otlptracegrpc.WithDialOption(do))
 	}
 
-	exporter, err := otlptracegrpc.New(ctx, opts...)
+	traceExp, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC trace exporter: %w", err)
 	}
 
-	e.traceExporter = exporter
+	e.traceExporter = traceExp
 
 	// Also create a raw gRPC client for proto forwarding
 	connOpts := []grpc.DialOption{}
@@ -155,7 +163,7 @@ func (e *CloudExporter) initGRPC(config *Config) error {
 	return nil
 }
 
-// initHTTP initializes the HTTP exporter.
+// initHTTP initializes the generic OTLP HTTP exporter.
 func (e *CloudExporter) initHTTP(config *Config) error {
 	opts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(config.Endpoint),
@@ -165,31 +173,41 @@ func (e *CloudExporter) initHTTP(config *Config) error {
 		opts = append(opts, otlptracehttp.WithInsecure())
 	}
 
-	exporter, err := otlptracehttp.New(context.Background(), opts...)
+	traceExp, err := otlptracehttp.New(context.Background(), opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP trace exporter: %w", err)
 	}
 
-	e.traceExporter = exporter
+	e.traceExporter = traceExp
 	return nil
 }
 
 // ExportSpans exports a batch of SDK spans to the cloud endpoint.
 func (e *CloudExporter) ExportSpans(ctx context.Context, spans []trace.ReadOnlySpan) error {
-	if e == nil || e.traceExporter == nil {
+	if e == nil {
+		return nil
+	}
+	if e.gcpExporter != nil {
+		return e.gcpExporter.traceExporter.ExportSpans(ctx, spans)
+	}
+	if e.traceExporter == nil {
 		return nil
 	}
 	return e.traceExporter.ExportSpans(ctx, spans)
 }
 
 // ExportProtoSpans exports raw proto spans to the cloud endpoint.
-// This is used for forwarding OTLP data received from agents.
 func (e *CloudExporter) ExportProtoSpans(ctx context.Context, resourceSpans []*tracepb.ResourceSpans) error {
 	if e == nil {
 		return nil
 	}
 
-	// Use gRPC client if available
+	// GCP-native path: convert proto → SDK → Cloud Trace
+	if e.gcpExporter != nil {
+		return e.gcpExporter.ExportProtoSpans(ctx, resourceSpans)
+	}
+
+	// Generic OTLP path: forward raw proto via gRPC
 	if e.grpcClient != nil {
 		req := &coltracepb.ExportTraceServiceRequest{
 			ResourceSpans: resourceSpans,
@@ -198,18 +216,21 @@ func (e *CloudExporter) ExportProtoSpans(ctx context.Context, resourceSpans []*t
 		return err
 	}
 
-	// Otherwise we can't forward raw proto data
-	// This is acceptable for M1 - cloud export may not work without proper setup
 	return nil
 }
 
 // ExportProtoMetrics exports raw proto metrics to the cloud endpoint.
-// This is used for forwarding OTLP data received from agents.
 func (e *CloudExporter) ExportProtoMetrics(ctx context.Context, resourceMetrics []*metricpb.ResourceMetrics) error {
 	if e == nil {
 		return nil
 	}
 
+	// GCP-native path
+	if e.gcpExporter != nil {
+		return e.gcpExporter.ExportProtoMetrics(ctx, resourceMetrics)
+	}
+
+	// Generic OTLP path
 	if e.metricClient != nil {
 		req := &colmetricpb.ExportMetricsServiceRequest{
 			ResourceMetrics: resourceMetrics,
@@ -222,12 +243,17 @@ func (e *CloudExporter) ExportProtoMetrics(ctx context.Context, resourceMetrics 
 }
 
 // ExportProtoLogs exports raw proto logs to the cloud endpoint.
-// This is used for forwarding OTLP data received from agents.
 func (e *CloudExporter) ExportProtoLogs(ctx context.Context, resourceLogs []*logspb.ResourceLogs) error {
 	if e == nil {
 		return nil
 	}
 
+	// GCP-native path
+	if e.gcpExporter != nil {
+		return e.gcpExporter.ExportProtoLogs(ctx, resourceLogs)
+	}
+
+	// Generic OTLP path
 	if e.logClient != nil {
 		req := &collogspb.ExportLogsServiceRequest{
 			ResourceLogs: resourceLogs,
@@ -247,6 +273,14 @@ func (e *CloudExporter) Shutdown(ctx context.Context) error {
 
 	var errs []error
 
+	// GCP-native path
+	if e.gcpExporter != nil {
+		if err := e.gcpExporter.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	// Generic OTLP path
 	if e.traceExporter != nil {
 		if err := e.traceExporter.Shutdown(ctx); err != nil {
 			errs = append(errs, err)
@@ -266,10 +300,12 @@ func (e *CloudExporter) Shutdown(ctx context.Context) error {
 }
 
 // SpanExporter returns the underlying trace.SpanExporter.
-// This is useful for registering with a TracerProvider.
 func (e *CloudExporter) SpanExporter() trace.SpanExporter {
 	if e == nil {
 		return nil
+	}
+	if e.gcpExporter != nil {
+		return e.gcpExporter.traceExporter
 	}
 	return e.traceExporter
 }
