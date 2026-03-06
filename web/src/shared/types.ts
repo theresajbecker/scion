@@ -214,6 +214,8 @@ export interface Agent {
   lastSeen?: string;
   createdAt: string;
   updatedAt: string;
+  harnessConfig?: string;
+  harnessAuth?: string;
   runtimeBrokerId?: string;
   runtimeBrokerName?: string;
   _capabilities?: Capabilities;

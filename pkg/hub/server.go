@@ -340,6 +340,7 @@ type RemoteAgentInfo struct {
 	Name            string `json:"name"`
 	Template        string `json:"template,omitempty"`
 	HarnessConfig   string `json:"harnessConfig,omitempty"`
+	HarnessAuth     string `json:"harnessAuth,omitempty"`
 	Runtime         string `json:"runtime,omitempty"`
 	Phase           string `json:"phase,omitempty"`           // Lifecycle phase
 	Activity        string `json:"activity,omitempty"`        // Runtime activity

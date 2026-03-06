@@ -956,9 +956,14 @@ func (s *Server) enrichAgent(ctx context.Context, agent *store.Agent, grove *sto
 		return
 	}
 
-	// Populate harness config from applied config
-	if agent.HarnessConfig == "" && agent.AppliedConfig != nil && agent.AppliedConfig.HarnessConfig != "" {
-		agent.HarnessConfig = agent.AppliedConfig.HarnessConfig
+	// Populate harness config and auth from applied config
+	if agent.AppliedConfig != nil {
+		if agent.HarnessConfig == "" && agent.AppliedConfig.HarnessConfig != "" {
+			agent.HarnessConfig = agent.AppliedConfig.HarnessConfig
+		}
+		if agent.HarnessAuth == "" && agent.AppliedConfig.HarnessAuth != "" {
+			agent.HarnessAuth = agent.AppliedConfig.HarnessAuth
+		}
 	}
 
 	// Populate grove name

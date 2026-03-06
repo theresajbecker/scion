@@ -341,6 +341,7 @@ type AgentInfo struct {
 	Name          string `json:"name"`                  // Human-friendly display name
 	Template      string `json:"template"`
 	HarnessConfig string `json:"harnessConfig,omitempty"` // Resolved harness-config name
+	HarnessAuth   string `json:"harnessAuth,omitempty"`   // Resolved harness auth method (api-key, vertex-ai, auth-file)
 
 	// Grove association
 	Grove     string `json:"grove"`               // Grove name (legacy, simple string)

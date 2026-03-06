@@ -758,8 +758,13 @@ func (d *HTTPAgentDispatcher) applyBrokerResponse(agent *store.Agent, resp *Remo
 		if resp.Agent.Template != "" {
 			agent.Template = resp.Agent.Template
 		}
-		if resp.Agent.HarnessConfig != "" && agent.AppliedConfig != nil {
-			agent.AppliedConfig.HarnessConfig = resp.Agent.HarnessConfig
+		if agent.AppliedConfig != nil {
+			if resp.Agent.HarnessConfig != "" {
+				agent.AppliedConfig.HarnessConfig = resp.Agent.HarnessConfig
+			}
+			if resp.Agent.HarnessAuth != "" {
+				agent.AppliedConfig.HarnessAuth = resp.Agent.HarnessAuth
+			}
 		}
 		if resp.Agent.Runtime != "" {
 			agent.Runtime = resp.Agent.Runtime

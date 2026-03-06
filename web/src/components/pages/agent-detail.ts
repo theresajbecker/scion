@@ -875,6 +875,22 @@ export class ScionPageAgentDetail extends LitElement {
             <span class="info-label">Template</span>
             <span class="info-value">${this.agent.template}</span>
           </div>
+          ${this.agent.harnessConfig
+            ? html`
+                <div class="info-item">
+                  <span class="info-label">Harness</span>
+                  <span class="info-value">${this.agent.harnessConfig}</span>
+                </div>
+              `
+            : ''}
+          ${this.agent.harnessAuth
+            ? html`
+                <div class="info-item">
+                  <span class="info-label">Harness Auth</span>
+                  <span class="info-value">${this.agent.harnessAuth}</span>
+                </div>
+              `
+            : ''}
           <div class="info-item">
             <span class="info-label">Grove</span>
             <span class="info-value">${this.grove?.name || this.agent.groveId}</span>

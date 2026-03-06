@@ -330,6 +330,13 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}
 		resolvedAuth = resolved
 
+		// Persist the resolved auth method so it can be reported to the Hub.
+		// For auto-detected auth, opts.HarnessAuth may be empty; capture the
+		// actual method the harness selected (e.g. "api-key", "vertex-ai").
+		if opts.HarnessAuth == "" && resolved.Method != "" {
+			opts.HarnessAuth = resolved.Method
+		}
+
 		// Surface resolved auth method so CLI can display it
 		authDetail := resolved.Method
 		if nativeType, ok := resolved.EnvVars["GEMINI_DEFAULT_AUTH_TYPE"]; ok {
@@ -595,6 +602,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 			"scion.grove":          groveName,
 			"scion.template":       template,
 			"scion.harness_config": harnessConfigName,
+			"scion.harness_auth":   opts.HarnessAuth,
 		},
 		Annotations: map[string]string{
 			"scion.grove_path": projectDir,
@@ -626,12 +634,14 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 				a.Detached = detached
 				a.Warnings = warnings
 				a.Phase = status
+				a.HarnessConfig = harnessConfigName
+				a.HarnessAuth = opts.HarnessAuth
 				return &a, nil
 			}
 		}
 	}
 
-	return &api.AgentInfo{ID: id, Name: opts.Name, Phase: status, Detached: detached, Warnings: warnings}, nil
+	return &api.AgentInfo{ID: id, Name: opts.Name, Phase: status, Detached: detached, Warnings: warnings, HarnessConfig: harnessConfigName, HarnessAuth: opts.HarnessAuth}, nil
 }
 
 // extractWorkspaceFromVolumes finds a volume mounted to /workspace and returns its source path.

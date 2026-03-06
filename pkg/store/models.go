@@ -62,6 +62,7 @@ type Agent struct {
 	Grove             string `json:"grove,omitempty"`             // Grove name (resolved from GroveID)
 	RuntimeBrokerName string `json:"runtimeBrokerName,omitempty"` // Broker name (resolved from RuntimeBrokerID)
 	HarnessConfig     string `json:"harnessConfig,omitempty"`     // Harness config name (resolved from AppliedConfig.HarnessConfig)
+	HarnessAuth       string `json:"harnessAuth,omitempty"`       // Harness auth method (resolved from AppliedConfig.HarnessAuth)
 
 	// Applied configuration (stored as JSON)
 	AppliedConfig *AgentAppliedConfig `json:"appliedConfig,omitempty"`
@@ -905,6 +906,9 @@ func (a *Agent) ToAPI() *api.AgentInfo {
 		}
 		if info.HarnessConfig == "" && a.AppliedConfig.HarnessConfig != "" {
 			info.HarnessConfig = a.AppliedConfig.HarnessConfig
+		}
+		if info.HarnessAuth == "" && a.AppliedConfig.HarnessAuth != "" {
+			info.HarnessAuth = a.AppliedConfig.HarnessAuth
 		}
 	}
 
