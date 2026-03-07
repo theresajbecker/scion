@@ -1089,9 +1089,14 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request, id string) {
 
 	// Enrich agent with grove and broker names
 	s.enrichAgent(ctx, agent, nil, nil)
+	resolvedHarness, harnessCaps := s.resolveAgentHarnessCapabilities(ctx, agent)
 
 	// Compute capabilities for this agent
-	resp := AgentWithCapabilities{Agent: *agent}
+	resp := AgentWithCapabilities{
+		Agent:               *agent,
+		ResolvedHarness:     resolvedHarness,
+		HarnessCapabilities: &harnessCaps,
+	}
 	if identity := GetIdentityFromContext(ctx); identity != nil {
 		resp.Cap = s.authzService.ComputeCapabilities(ctx, identity, agentResource(agent))
 	}
@@ -1146,6 +1151,14 @@ func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request, id string) 
 	if updates.Config != nil {
 		if agent.Phase != "created" {
 			Conflict(w, "Config can only be updated for agents in 'created' phase")
+			return
+		}
+		resolvedHarness, harnessCaps := s.resolveAgentHarnessCapabilities(ctx, agent)
+		if issues := validateConfigAgainstHarnessCapabilities(updates.Config, harnessCaps); len(issues) > 0 {
+			ValidationError(w, "Config contains unsupported fields for harness "+resolvedHarness, map[string]interface{}{
+				"harness": resolvedHarness,
+				"fields":  issues,
+			})
 			return
 		}
 		if agent.AppliedConfig == nil {

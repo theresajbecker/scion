@@ -15,13 +15,16 @@
 package hub
 
 import (
+	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/store"
 )
 
 // AgentWithCapabilities wraps a store.Agent with capability annotations.
 type AgentWithCapabilities struct {
 	store.Agent
-	Cap *Capabilities `json:"_capabilities,omitempty"`
+	Cap                 *Capabilities                    `json:"_capabilities,omitempty"`
+	ResolvedHarness     string                           `json:"resolvedHarness,omitempty"`
+	HarnessCapabilities *api.HarnessAdvancedCapabilities `json:"harnessCapabilities,omitempty"`
 }
 
 // GroveWithCapabilities wraps a store.Grove with capability annotations.

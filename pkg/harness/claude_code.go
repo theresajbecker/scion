@@ -36,6 +36,30 @@ func (c *ClaudeCode) Name() string {
 	return "claude"
 }
 
+func (c *ClaudeCode) AdvancedCapabilities() api.HarnessAdvancedCapabilities {
+	return api.HarnessAdvancedCapabilities{
+		Harness: "claude",
+		Limits: api.HarnessLimitCapabilities{
+			MaxTurns:      api.CapabilityField{Support: api.SupportYes},
+			MaxModelCalls: api.CapabilityField{Support: api.SupportNo, Reason: "This harness does not emit model-end hook events"},
+			MaxDuration:   api.CapabilityField{Support: api.SupportNo, Reason: "Not implemented yet"},
+		},
+		Telemetry: api.HarnessTelemetryCapabilities{
+			EnabledConfig: api.CapabilityField{Support: api.SupportYes},
+			NativeEmitter: api.CapabilityField{Support: api.SupportYes},
+		},
+		Prompts: api.HarnessPromptCapabilities{
+			SystemPrompt:      api.CapabilityField{Support: api.SupportYes},
+			AgentInstructions: api.CapabilityField{Support: api.SupportYes},
+		},
+		Auth: api.HarnessAuthCapabilities{
+			APIKey:   api.CapabilityField{Support: api.SupportYes},
+			AuthFile: api.CapabilityField{Support: api.SupportNo, Reason: "Claude does not support auth-file mode"},
+			VertexAI: api.CapabilityField{Support: api.SupportYes},
+		},
+	}
+}
+
 func (c *ClaudeCode) GetEnv(agentName string, agentHome string, unixUsername string) map[string]string {
 	env := make(map[string]string)
 
@@ -173,11 +197,11 @@ func (c *ClaudeCode) provisionClaudeJSON(agentHome, agentWorkspace string) error
 			"allowedTools":                            []interface{}{},
 			"mcpContextUris":                          []interface{}{},
 			"mcpServers":                              map[string]interface{}{},
-			"enabledMcpjsonServers":                  []interface{}{},
-			"disabledMcpjsonServers":                 []interface{}{},
+			"enabledMcpjsonServers":                   []interface{}{},
+			"disabledMcpjsonServers":                  []interface{}{},
 			"hasTrustDialogAccepted":                  false,
 			"projectOnboardingSeenCount":              1,
-			"hasClaudeMdExternalIncludesApproved":    false,
+			"hasClaudeMdExternalIncludesApproved":     false,
 			"hasClaudeMdExternalIncludesWarningShown": false,
 			"exampleFiles":                            []interface{}{},
 		}

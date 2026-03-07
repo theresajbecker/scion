@@ -30,6 +30,30 @@ func (g *Generic) Name() string {
 	return "generic"
 }
 
+func (g *Generic) AdvancedCapabilities() api.HarnessAdvancedCapabilities {
+	return api.HarnessAdvancedCapabilities{
+		Harness: "generic",
+		Limits: api.HarnessLimitCapabilities{
+			MaxTurns:      api.CapabilityField{Support: api.SupportNo, Reason: "This harness has no hook dialect for turn events"},
+			MaxModelCalls: api.CapabilityField{Support: api.SupportNo, Reason: "This harness has no hook dialect for model events"},
+			MaxDuration:   api.CapabilityField{Support: api.SupportNo, Reason: "Not implemented yet"},
+		},
+		Telemetry: api.HarnessTelemetryCapabilities{
+			EnabledConfig: api.CapabilityField{Support: api.SupportYes},
+			NativeEmitter: api.CapabilityField{Support: api.SupportNo, Reason: "Native telemetry forwarding is not defined for generic harnesses"},
+		},
+		Prompts: api.HarnessPromptCapabilities{
+			SystemPrompt:      api.CapabilityField{Support: api.SupportPartial, Reason: "Saved under .scion/system_prompt.md, without harness-native behavior"},
+			AgentInstructions: api.CapabilityField{Support: api.SupportYes},
+		},
+		Auth: api.HarnessAuthCapabilities{
+			APIKey:   api.CapabilityField{Support: api.SupportYes},
+			AuthFile: api.CapabilityField{Support: api.SupportYes},
+			VertexAI: api.CapabilityField{Support: api.SupportYes},
+		},
+	}
+}
+
 func (g *Generic) GetEnv(agentName string, agentHome string, unixUsername string) map[string]string {
 	env := make(map[string]string)
 	env["SCION_AGENT_NAME"] = agentName

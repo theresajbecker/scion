@@ -31,6 +31,30 @@ func (c *Codex) Name() string {
 	return "codex"
 }
 
+func (c *Codex) AdvancedCapabilities() api.HarnessAdvancedCapabilities {
+	return api.HarnessAdvancedCapabilities{
+		Harness: "codex",
+		Limits: api.HarnessLimitCapabilities{
+			MaxTurns:      api.CapabilityField{Support: api.SupportNo, Reason: "This harness has no hook dialect for turn events"},
+			MaxModelCalls: api.CapabilityField{Support: api.SupportNo, Reason: "This harness has no hook dialect for model events"},
+			MaxDuration:   api.CapabilityField{Support: api.SupportNo, Reason: "Not implemented yet"},
+		},
+		Telemetry: api.HarnessTelemetryCapabilities{
+			EnabledConfig: api.CapabilityField{Support: api.SupportYes},
+			NativeEmitter: api.CapabilityField{Support: api.SupportPartial, Reason: "Telemetry is file-config based and not fully wired by Scion"},
+		},
+		Prompts: api.HarnessPromptCapabilities{
+			SystemPrompt:      api.CapabilityField{Support: api.SupportNo, Reason: "System prompt injection is not implemented for this harness"},
+			AgentInstructions: api.CapabilityField{Support: api.SupportYes},
+		},
+		Auth: api.HarnessAuthCapabilities{
+			APIKey:   api.CapabilityField{Support: api.SupportYes},
+			AuthFile: api.CapabilityField{Support: api.SupportYes},
+			VertexAI: api.CapabilityField{Support: api.SupportNo, Reason: "Vertex AI auth is not supported for this harness"},
+		},
+	}
+}
+
 func (c *Codex) GetEnv(agentName string, agentHome string, unixUsername string) map[string]string {
 	return map[string]string{}
 }

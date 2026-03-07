@@ -31,6 +31,30 @@ func (o *OpenCode) Name() string {
 	return "opencode"
 }
 
+func (o *OpenCode) AdvancedCapabilities() api.HarnessAdvancedCapabilities {
+	return api.HarnessAdvancedCapabilities{
+		Harness: "opencode",
+		Limits: api.HarnessLimitCapabilities{
+			MaxTurns:      api.CapabilityField{Support: api.SupportNo, Reason: "This harness has no hook dialect for turn events"},
+			MaxModelCalls: api.CapabilityField{Support: api.SupportNo, Reason: "This harness has no hook dialect for model events"},
+			MaxDuration:   api.CapabilityField{Support: api.SupportNo, Reason: "Not implemented yet"},
+		},
+		Telemetry: api.HarnessTelemetryCapabilities{
+			EnabledConfig: api.CapabilityField{Support: api.SupportYes},
+			NativeEmitter: api.CapabilityField{Support: api.SupportNo, Reason: "Native telemetry forwarding is not wired for this harness"},
+		},
+		Prompts: api.HarnessPromptCapabilities{
+			SystemPrompt:      api.CapabilityField{Support: api.SupportPartial, Reason: "System prompt is downgraded into AGENTS.md"},
+			AgentInstructions: api.CapabilityField{Support: api.SupportYes},
+		},
+		Auth: api.HarnessAuthCapabilities{
+			APIKey:   api.CapabilityField{Support: api.SupportYes},
+			AuthFile: api.CapabilityField{Support: api.SupportYes},
+			VertexAI: api.CapabilityField{Support: api.SupportNo, Reason: "Vertex AI auth is not supported for this harness"},
+		},
+	}
+}
+
 func (o *OpenCode) GetEnv(agentName string, agentHome string, unixUsername string) map[string]string {
 	return map[string]string{}
 }

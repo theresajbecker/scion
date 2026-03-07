@@ -34,6 +34,30 @@ func (g *GeminiCLI) Name() string {
 	return "gemini"
 }
 
+func (g *GeminiCLI) AdvancedCapabilities() api.HarnessAdvancedCapabilities {
+	return api.HarnessAdvancedCapabilities{
+		Harness: "gemini",
+		Limits: api.HarnessLimitCapabilities{
+			MaxTurns:      api.CapabilityField{Support: api.SupportYes},
+			MaxModelCalls: api.CapabilityField{Support: api.SupportYes},
+			MaxDuration:   api.CapabilityField{Support: api.SupportNo, Reason: "Not implemented yet"},
+		},
+		Telemetry: api.HarnessTelemetryCapabilities{
+			EnabledConfig: api.CapabilityField{Support: api.SupportYes},
+			NativeEmitter: api.CapabilityField{Support: api.SupportYes},
+		},
+		Prompts: api.HarnessPromptCapabilities{
+			SystemPrompt:      api.CapabilityField{Support: api.SupportYes},
+			AgentInstructions: api.CapabilityField{Support: api.SupportYes},
+		},
+		Auth: api.HarnessAuthCapabilities{
+			APIKey:   api.CapabilityField{Support: api.SupportYes},
+			AuthFile: api.CapabilityField{Support: api.SupportYes},
+			VertexAI: api.CapabilityField{Support: api.SupportYes},
+		},
+	}
+}
+
 func (g *GeminiCLI) GetEnv(agentName string, agentHome string, unixUsername string) map[string]string {
 	env := make(map[string]string)
 
@@ -295,7 +319,7 @@ func (g *GeminiCLI) resolveExplicit(auth api.AuthConfig) (*api.ResolvedAuth, err
 		}
 		envVars := map[string]string{
 			"GEMINI_DEFAULT_AUTH_TYPE": "gemini-api-key",
-			"GEMINI_API_KEY":          apiKey,
+			"GEMINI_API_KEY":           apiKey,
 		}
 		if apiKey == auth.GoogleAPIKey {
 			envVars["GOOGLE_API_KEY"] = apiKey
@@ -335,7 +359,7 @@ func (g *GeminiCLI) resolveExplicit(auth api.AuthConfig) (*api.ResolvedAuth, err
 			Method: "vertex-ai",
 			EnvVars: map[string]string{
 				"GEMINI_DEFAULT_AUTH_TYPE": "vertex-ai",
-				"GOOGLE_CLOUD_PROJECT":    auth.GoogleCloudProject,
+				"GOOGLE_CLOUD_PROJECT":     auth.GoogleCloudProject,
 			},
 		}
 		if auth.GoogleCloudRegion != "" {
@@ -406,7 +430,7 @@ func (g *GeminiCLI) resolveAutoDetect(auth api.AuthConfig) (*api.ResolvedAuth, e
 			Method: "vertex-ai",
 			EnvVars: map[string]string{
 				"GEMINI_DEFAULT_AUTH_TYPE": "vertex-ai",
-				"GOOGLE_CLOUD_PROJECT":    auth.GoogleCloudProject,
+				"GOOGLE_CLOUD_PROJECT":     auth.GoogleCloudProject,
 			},
 			Files: []api.FileMapping{
 				{

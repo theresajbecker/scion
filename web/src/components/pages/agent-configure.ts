@@ -9,7 +9,7 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 
 import { apiFetch, extractApiError } from '../../client/api.js';
-import type { Agent } from '../../shared/types.js';
+import type { Agent, CapabilityField, HarnessAdvancedCapabilities } from '../../shared/types.js';
 import type { EnvEntry } from '../shared/env-editor.js';
 import '../shared/env-editor.js';
 
@@ -89,6 +89,39 @@ export class ScionPageAgentConfigure extends LitElement {
   @state() private requiredEnvKeys: string[] = [];
 
   private agentId = '';
+
+  private get harnessCapabilities(): HarnessAdvancedCapabilities | null {
+    return this.agent?.harnessCapabilities || null;
+  }
+
+  private supportReason(field?: CapabilityField): string {
+    if (field?.reason) return field.reason;
+    return 'Unsupported for the current harness.';
+  }
+
+  private isUnsupported(field?: CapabilityField): boolean {
+    return field?.support === 'no';
+  }
+
+  private authFieldForMethod(method: string): CapabilityField | null {
+    const authCaps = this.harnessCapabilities?.auth;
+    if (!authCaps) return null;
+    switch (method) {
+      case 'api-key':
+        return authCaps.api_key;
+      case 'auth-file':
+        return authCaps.auth_file;
+      case 'vertex-ai':
+        return authCaps.vertex_ai;
+      default:
+        return null;
+    }
+  }
+
+  private authMethodSupported(method: string): boolean {
+    const field = this.authFieldForMethod(method);
+    return field ? field.support !== 'no' : true;
+  }
 
   static override styles = css`
     :host {
@@ -362,18 +395,19 @@ export class ScionPageAgentConfigure extends LitElement {
 
   private buildConfig(): ScionConfigPayload {
     const config: ScionConfigPayload = {};
+    const caps = this.harnessCapabilities;
 
     if (this.model) config.model = this.model;
     if (this.image) config.image = this.image;
     if (this.branch) config.branch = this.branch;
     if (this.containerUser) config.user = this.containerUser;
-    if (this.authMethod) config.auth_selectedType = this.authMethod;
+    if (this.authMethod && this.authMethodSupported(this.authMethod)) config.auth_selectedType = this.authMethod;
     if (this.task) config.task = this.task;
-    if (this.systemPrompt) config.system_prompt = this.systemPrompt;
+    if (this.systemPrompt && !this.isUnsupported(caps?.prompts.system_prompt)) config.system_prompt = this.systemPrompt;
     if (this.agentInstructions) config.agent_instructions = this.agentInstructions;
-    if (this.maxTurns) config.max_turns = this.maxTurns;
-    if (this.maxModelCalls) config.max_model_calls = this.maxModelCalls;
-    if (this.maxDuration) config.max_duration = this.maxDuration;
+    if (this.maxTurns && !this.isUnsupported(caps?.limits.max_turns)) config.max_turns = this.maxTurns;
+    if (this.maxModelCalls && !this.isUnsupported(caps?.limits.max_model_calls)) config.max_model_calls = this.maxModelCalls;
+    if (this.maxDuration && !this.isUnsupported(caps?.limits.max_duration)) config.max_duration = this.maxDuration;
 
     // Resources
     const hasResources =
@@ -405,7 +439,9 @@ export class ScionPageAgentConfigure extends LitElement {
     }
 
     // Telemetry
-    config.telemetry = { enabled: this.telemetryEnabled };
+    if (!this.isUnsupported(caps?.telemetry.enabled)) {
+      config.telemetry = { enabled: this.telemetryEnabled };
+    }
 
     return config;
   }
@@ -636,6 +672,11 @@ export class ScionPageAgentConfigure extends LitElement {
   }
 
   private renderGeneralTab() {
+    const authFileCap = this.harnessCapabilities?.auth.auth_file;
+    const vertexCap = this.harnessCapabilities?.auth.vertex_ai;
+    const telemetryCap = this.harnessCapabilities?.telemetry.enabled;
+    const selectedAuthCap = this.authFieldForMethod(this.authMethod);
+
     return html`
       <div class="form-field">
         <label>Model</label>
@@ -682,9 +723,12 @@ export class ScionPageAgentConfigure extends LitElement {
         >
           <sl-option value="">Auto Detected</sl-option>
           <sl-option value="api-key">Provider API Key</sl-option>
-          <sl-option value="vertex-ai">Vertex Model Garden</sl-option>
-          <sl-option value="auth-file">Harness credential file</sl-option>
+          <sl-option value="vertex-ai" ?disabled=${this.isUnsupported(vertexCap)}>Vertex Model Garden</sl-option>
+          <sl-option value="auth-file" ?disabled=${this.isUnsupported(authFileCap)}>Harness credential file</sl-option>
         </sl-select>
+        ${this.authMethod && this.isUnsupported(selectedAuthCap)
+          ? html`<div class="hint">${this.supportReason(selectedAuthCap)}</div>`
+          : nothing}
       </div>
 
       ${this.harnessConfig
@@ -698,12 +742,25 @@ export class ScionPageAgentConfigure extends LitElement {
         : nothing}
 
       <div class="notify-field">
-        <sl-checkbox
-          ?checked=${this.telemetryEnabled}
-          @sl-change=${(e: Event) => { this.telemetryEnabled = (e.target as HTMLInputElement).checked; }}
-        >
-          Enable Telemetry
-        </sl-checkbox>
+        ${this.isUnsupported(telemetryCap)
+          ? html`
+              <sl-tooltip content=${this.supportReason(telemetryCap)} hoist>
+                <sl-checkbox
+                  ?checked=${this.telemetryEnabled}
+                  ?disabled=${true}
+                >
+                  Enable Telemetry
+                </sl-checkbox>
+              </sl-tooltip>
+            `
+          : html`
+              <sl-checkbox
+                ?checked=${this.telemetryEnabled}
+                @sl-change=${(e: Event) => { this.telemetryEnabled = (e.target as HTMLInputElement).checked; }}
+              >
+                Enable Telemetry
+              </sl-checkbox>
+            `}
         <sl-tooltip
           content="Collect telemetry data for this agent. The default reflects the global telemetry setting."
           hoist
@@ -715,6 +772,8 @@ export class ScionPageAgentConfigure extends LitElement {
   }
 
   private renderTaskTab() {
+    const systemPromptCap = this.harnessCapabilities?.prompts.system_prompt;
+
     return html`
       <div class="form-field">
         <label>Task</label>
@@ -730,13 +789,30 @@ export class ScionPageAgentConfigure extends LitElement {
 
       <div class="form-field">
         <label>System Prompt</label>
-        <sl-textarea
-          placeholder="System prompt content or file:// URI..."
-          .value=${this.systemPrompt}
-          @sl-input=${(e: Event) => { this.systemPrompt = (e.target as HTMLElement & { value: string }).value; }}
-          rows="8"
-          resize="auto"
-        ></sl-textarea>
+        ${this.isUnsupported(systemPromptCap)
+          ? html`
+              <sl-tooltip content=${this.supportReason(systemPromptCap)} hoist>
+                <sl-textarea
+                  placeholder="System prompt content or file:// URI..."
+                  .value=${this.systemPrompt}
+                  rows="8"
+                  resize="auto"
+                  ?disabled=${true}
+                ></sl-textarea>
+              </sl-tooltip>
+            `
+          : html`
+              <sl-textarea
+                placeholder="System prompt content or file:// URI..."
+                .value=${this.systemPrompt}
+                @sl-input=${(e: Event) => { this.systemPrompt = (e.target as HTMLElement & { value: string }).value; }}
+                rows="8"
+                resize="auto"
+              ></sl-textarea>
+            `}
+        ${systemPromptCap?.support === 'partial'
+          ? html`<div class="hint">${this.supportReason(systemPromptCap)}</div>`
+          : nothing}
       </div>
 
       <div class="form-field">
@@ -753,35 +829,77 @@ export class ScionPageAgentConfigure extends LitElement {
   }
 
   private renderLimitsTab() {
+    const maxTurnsCap = this.harnessCapabilities?.limits.max_turns;
+    const maxModelCallsCap = this.harnessCapabilities?.limits.max_model_calls;
+    const maxDurationCap = this.harnessCapabilities?.limits.max_duration;
+
     return html`
       <div class="field-row">
         <div class="form-field">
           <label>Max Turns</label>
-          <sl-input
-            type="number"
-            placeholder="0 = unlimited"
-            .value=${String(this.maxTurns || '')}
-            @sl-input=${(e: Event) => { this.maxTurns = parseInt((e.target as HTMLElement & { value: string }).value) || 0; }}
-          ></sl-input>
+          ${this.isUnsupported(maxTurnsCap)
+            ? html`
+                <sl-tooltip content=${this.supportReason(maxTurnsCap)} hoist>
+                  <sl-input
+                    type="number"
+                    placeholder="0 = unlimited"
+                    .value=${String(this.maxTurns || '')}
+                    ?disabled=${true}
+                  ></sl-input>
+                </sl-tooltip>
+              `
+            : html`
+                <sl-input
+                  type="number"
+                  placeholder="0 = unlimited"
+                  .value=${String(this.maxTurns || '')}
+                  @sl-input=${(e: Event) => { this.maxTurns = parseInt((e.target as HTMLElement & { value: string }).value) || 0; }}
+                ></sl-input>
+              `}
         </div>
         <div class="form-field">
           <label>Max Model Calls</label>
-          <sl-input
-            type="number"
-            placeholder="0 = unlimited"
-            .value=${String(this.maxModelCalls || '')}
-            @sl-input=${(e: Event) => { this.maxModelCalls = parseInt((e.target as HTMLElement & { value: string }).value) || 0; }}
-          ></sl-input>
+          ${this.isUnsupported(maxModelCallsCap)
+            ? html`
+                <sl-tooltip content=${this.supportReason(maxModelCallsCap)} hoist>
+                  <sl-input
+                    type="number"
+                    placeholder="0 = unlimited"
+                    .value=${String(this.maxModelCalls || '')}
+                    ?disabled=${true}
+                  ></sl-input>
+                </sl-tooltip>
+              `
+            : html`
+                <sl-input
+                  type="number"
+                  placeholder="0 = unlimited"
+                  .value=${String(this.maxModelCalls || '')}
+                  @sl-input=${(e: Event) => { this.maxModelCalls = parseInt((e.target as HTMLElement & { value: string }).value) || 0; }}
+                ></sl-input>
+              `}
         </div>
       </div>
 
       <div class="form-field">
         <label>Max Duration</label>
-        <sl-input
-          placeholder="e.g. 30m, 2h"
-          .value=${this.maxDuration}
-          @sl-input=${(e: Event) => { this.maxDuration = (e.target as HTMLElement & { value: string }).value; }}
-        ></sl-input>
+        ${this.isUnsupported(maxDurationCap)
+          ? html`
+              <sl-tooltip content=${this.supportReason(maxDurationCap)} hoist>
+                <sl-input
+                  placeholder="e.g. 30m, 2h"
+                  .value=${this.maxDuration}
+                  ?disabled=${true}
+                ></sl-input>
+              </sl-tooltip>
+            `
+          : html`
+              <sl-input
+                placeholder="e.g. 30m, 2h"
+                .value=${this.maxDuration}
+                @sl-input=${(e: Event) => { this.maxDuration = (e.target as HTMLElement & { value: string }).value; }}
+              ></sl-input>
+            `}
         <div class="hint">Go duration string. Empty means no limit.</div>
       </div>
 

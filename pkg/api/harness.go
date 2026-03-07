@@ -22,6 +22,7 @@ import (
 // Harness interface defines the methods a harness must implement
 type Harness interface {
 	Name() string
+	AdvancedCapabilities() HarnessAdvancedCapabilities
 	GetEnv(agentName string, agentHome string, unixUsername string) map[string]string
 	GetCommand(task string, resume bool, baseArgs []string) []string
 	DefaultConfigDir() string

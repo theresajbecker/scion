@@ -213,6 +213,35 @@ export interface AgentInlineConfig {
   image?: string;
 }
 
+export type SupportLevel = 'no' | 'partial' | 'yes';
+
+export interface CapabilityField {
+  support: SupportLevel;
+  reason?: string;
+}
+
+export interface HarnessAdvancedCapabilities {
+  harness: string;
+  limits: {
+    max_turns: CapabilityField;
+    max_model_calls: CapabilityField;
+    max_duration: CapabilityField;
+  };
+  telemetry: {
+    enabled: CapabilityField;
+    native_emitter: CapabilityField;
+  };
+  prompts: {
+    system_prompt: CapabilityField;
+    agent_instructions: CapabilityField;
+  };
+  auth: {
+    api_key: CapabilityField;
+    auth_file: CapabilityField;
+    vertex_ai: CapabilityField;
+  };
+}
+
 /**
  * Applied configuration snapshot captured at agent creation time.
  */
@@ -252,6 +281,8 @@ export interface Agent {
   updatedAt?: string;
   harnessConfig?: string;
   harnessAuth?: string;
+  resolvedHarness?: string;
+  harnessCapabilities?: HarnessAdvancedCapabilities;
   runtimeBrokerId?: string;
   runtimeBrokerName?: string;
   _capabilities?: Capabilities;
