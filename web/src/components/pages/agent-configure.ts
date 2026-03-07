@@ -8,7 +8,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 
-import { apiFetch } from '../../client/api.js';
+import { apiFetch, extractApiError } from '../../client/api.js';
 import type { Agent } from '../../shared/types.js';
 import type { EnvEntry } from '../shared/env-editor.js';
 import '../shared/env-editor.js';
@@ -303,8 +303,7 @@ export class ScionPageAgentConfigure extends LitElement {
     try {
       const res = await apiFetch(`/api/v1/agents/${this.agentId}`);
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { message?: string };
-        throw new Error(data.message || `HTTP ${res.status}`);
+        throw new Error(await extractApiError(res, `HTTP ${res.status}`));
       }
 
       this.agent = (await res.json()) as AgentWithConfig;
@@ -426,14 +425,13 @@ export class ScionPageAgentConfigure extends LitElement {
     try {
       const config = this.buildConfig();
       const res = await apiFetch(`/api/v1/agents/${this.agentId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config }),
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
-        throw new Error(data.message || data.error || `HTTP ${res.status}`);
+        throw new Error(await extractApiError(res, `HTTP ${res.status}`));
       }
 
       this.successMessage = 'Configuration saved successfully.';
@@ -465,17 +463,13 @@ export class ScionPageAgentConfigure extends LitElement {
       // Save config first
       const config = this.buildConfig();
       const saveRes = await apiFetch(`/api/v1/agents/${this.agentId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config }),
       });
 
       if (!saveRes.ok) {
-        const data = (await saveRes.json().catch(() => ({}))) as {
-          message?: string;
-          error?: string;
-        };
-        throw new Error(data.message || data.error || `HTTP ${saveRes.status}`);
+        throw new Error(await extractApiError(saveRes, `HTTP ${saveRes.status}`));
       }
 
       // Then start
@@ -484,11 +478,7 @@ export class ScionPageAgentConfigure extends LitElement {
       });
 
       if (!startRes.ok) {
-        const data = (await startRes.json().catch(() => ({}))) as {
-          message?: string;
-          error?: string;
-        };
-        throw new Error(data.message || data.error || `Failed to start agent`);
+        throw new Error(await extractApiError(startRes, 'Failed to start agent'));
       }
 
       // Navigate to agent detail
@@ -511,8 +501,7 @@ export class ScionPageAgentConfigure extends LitElement {
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
-        throw new Error(data.message || data.error || `HTTP ${res.status}`);
+        throw new Error(await extractApiError(res, `HTTP ${res.status}`));
       }
 
       window.history.pushState({}, '', '/agents');

@@ -64,3 +64,24 @@ export async function apiFetch(path: string, options?: RequestInit): Promise<Res
 
   return response;
 }
+
+/**
+ * Extract a human-readable error message from an API error response.
+ *
+ * The backend returns errors in the format: `{"error": {"code": "...", "message": "..."}}`.
+ * This helper parses that structure and returns just the message string.
+ */
+export async function extractApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = (await res.json()) as {
+      error?: { message?: string } | string;
+      message?: string;
+    };
+    if (typeof data.error === 'object' && data.error?.message) return data.error.message;
+    if (typeof data.message === 'string') return data.message;
+    if (typeof data.error === 'string') return data.error;
+  } catch {
+    // Response wasn't JSON
+  }
+  return fallback;
+}
