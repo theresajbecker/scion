@@ -14,8 +14,8 @@ CONTAINER_ARCH := $(shell if [ "$$(uname -m)" = "x86_64" ]; then echo amd64; els
 
 .PHONY: all build install test test-fast vet lint web clean help container-sciontool container-scion container-binaries
 
-## all: Build the Go binary and the web frontend
-all: install web
+## all: Build the web frontend, then compile the Go binary with embedded assets
+all: web install
 
 ## build: Compile the scion binary into ./build/
 build:
