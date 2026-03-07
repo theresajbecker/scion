@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/broker"
 	"github.com/ptone/scion-agent/pkg/messages"
 	"github.com/ptone/scion-agent/pkg/secret"
 	"github.com/ptone/scion-agent/pkg/storage"
@@ -391,6 +392,9 @@ type Server struct {
 	// Channel registry for external notification delivery (nil = disabled)
 	channelRegistry *ChannelRegistry
 
+	// Message broker proxy for pub/sub message routing (nil = disabled)
+	messageBrokerProxy *MessageBrokerProxy
+
 	// Dedicated request logger (nil = disabled)
 	requestLogger *slog.Logger
 
@@ -703,6 +707,21 @@ func (s *Server) SetChannelRegistry(r *ChannelRegistry) {
 	s.channelRegistry = r
 }
 
+// SetMessageBrokerProxy sets the message broker proxy for pub/sub message routing.
+// When set, messages can be routed through the broker instead of direct dispatch.
+func (s *Server) SetMessageBrokerProxy(p *MessageBrokerProxy) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.messageBrokerProxy = p
+}
+
+// GetMessageBrokerProxy returns the current message broker proxy (nil if disabled).
+func (s *Server) GetMessageBrokerProxy() *MessageBrokerProxy {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.messageBrokerProxy
+}
+
 // logMessage logs a message dispatch event to the dedicated message logger
 // (if configured) and the standard subsystem message logger.
 func (s *Server) logMessage(msg string, attrs ...any) {
@@ -838,6 +857,30 @@ func (s *Server) StartNotificationDispatcher() {
 	nd.channelRegistry = s.channelRegistry
 	s.notificationDispatcher = nd
 	s.notificationDispatcher.Start()
+}
+
+// StartMessageBroker creates and starts the message broker proxy if a
+// ChannelEventPublisher is available. The broker enables pub/sub message
+// routing with topic-based subscriptions and broadcast fan-out.
+// Safe to call multiple times; subsequent calls are no-ops.
+func (s *Server) StartMessageBroker(b broker.MessageBroker) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.messageBrokerProxy != nil {
+		return // already started
+	}
+
+	ep, ok := s.events.(*ChannelEventPublisher)
+	if !ok {
+		slog.Warn("Event publisher does not support subscriptions, message broker proxy not started")
+		return
+	}
+
+	proxy := NewMessageBrokerProxy(b, s.store, ep, s.GetDispatcher, logging.Subsystem("hub.broker"))
+	proxy.messageLog = s.dedicatedMessageLog
+	s.messageBrokerProxy = proxy
+	proxy.Start()
 }
 
 // GetControlChannelManager returns the control channel manager.
@@ -1184,6 +1227,9 @@ func (s *Server) CleanupResources(ctx context.Context) error {
 		}
 		if s.notificationDispatcher != nil {
 			s.notificationDispatcher.Stop()
+		}
+		if s.messageBrokerProxy != nil {
+			s.messageBrokerProxy.Stop()
 		}
 		if s.events != nil {
 			s.events.Close()

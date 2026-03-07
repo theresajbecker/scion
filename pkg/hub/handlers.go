@@ -1551,6 +1551,109 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, id s
 	w.WriteHeader(http.StatusOK)
 }
 
+// BroadcastMessageRequest is the request body for broadcasting a message via the broker.
+type BroadcastMessageRequest struct {
+	StructuredMessage *messages.StructuredMessage `json:"structured_message"`
+	Interrupt         bool                        `json:"interrupt,omitempty"`
+}
+
+// handleGroveBroadcast handles POST /api/v1/groves/{groveId}/broadcast.
+// It publishes a broadcast message to the grove's message broker topic,
+// which fans out to all running agents in the grove.
+func (s *Server) handleGroveBroadcast(w http.ResponseWriter, r *http.Request, groveID string) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w)
+		return
+	}
+
+	// Require user or agent authentication
+	ctx := r.Context()
+	userIdent := GetUserIdentityFromContext(ctx)
+	agentIdent := GetAgentIdentityFromContext(ctx)
+	if userIdent == nil && agentIdent == nil {
+		writeError(w, http.StatusForbidden, ErrCodeForbidden, "Broadcast requires user or agent authentication", nil)
+		return
+	}
+
+	// Agent callers must have message scope and be in the same grove
+	if agentIdent != nil && userIdent == nil {
+		if !agentIdent.HasScope(ScopeAgentLifecycle) {
+			writeError(w, http.StatusForbidden, ErrCodeForbidden, "Missing required scope: grove:agent:lifecycle", nil)
+			return
+		}
+		if agentIdent.GroveID() != groveID {
+			writeError(w, http.StatusForbidden, ErrCodeForbidden, "Agents can only broadcast within their own grove", nil)
+			return
+		}
+	}
+
+	var req BroadcastMessageRequest
+	if err := readJSON(r, &req); err != nil {
+		BadRequest(w, "Invalid request body: "+err.Error())
+		return
+	}
+
+	if req.StructuredMessage == nil {
+		ValidationError(w, "structured_message is required", nil)
+		return
+	}
+
+	proxy := s.GetMessageBrokerProxy()
+	if proxy == nil {
+		// Fallback: no broker configured, do direct fan-out
+		s.broadcastDirect(w, r, groveID, req.StructuredMessage, req.Interrupt)
+		return
+	}
+
+	// Log the broadcast
+	logAttrs := []any{"grove_id", groveID}
+	logAttrs = append(logAttrs, req.StructuredMessage.LogAttrs()...)
+	s.logMessage("broadcast message published", logAttrs...)
+
+	if err := proxy.PublishBroadcast(ctx, groveID, req.StructuredMessage); err != nil {
+		RuntimeError(w, "Failed to publish broadcast message: "+err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// broadcastDirect fans out a broadcast message directly to all running agents
+// in the grove without using the message broker. This is the fallback when
+// no broker is configured.
+func (s *Server) broadcastDirect(w http.ResponseWriter, r *http.Request, groveID string, msg *messages.StructuredMessage, interrupt bool) {
+	ctx := r.Context()
+	dispatcher := s.GetDispatcher()
+	if dispatcher == nil {
+		RuntimeError(w, "No runtime broker dispatcher available")
+		return
+	}
+
+	result, err := s.store.ListAgents(ctx, store.AgentFilter{
+		GroveID: groveID,
+		Phase:   "running",
+	}, store.ListOptions{})
+	if err != nil {
+		writeErrorFromErr(w, err, "")
+		return
+	}
+
+	for _, agent := range result.Items {
+		// Skip the sender if it's an agent
+		if msg.Sender == "agent:"+agent.Slug {
+			continue
+		}
+		agentMsg := *msg
+		agentMsg.Recipient = "agent:" + agent.Slug
+		if err := dispatcher.DispatchAgentMessage(ctx, &agent, agentMsg.Msg, interrupt, &agentMsg); err != nil {
+			s.messageLog.Error("Failed to deliver broadcast message to agent",
+				"agentSlug", agent.Slug, "error", err)
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) updateAgentStatus(w http.ResponseWriter, r *http.Request, id string) {
 	ctx := r.Context()
 	identity := GetIdentityFromContext(ctx)
@@ -2458,6 +2561,12 @@ func (s *Server) handleGroveRoutes(w http.ResponseWriter, r *http.Request) {
 		providerPath := strings.TrimPrefix(subPath, "providers")
 		providerPath = strings.TrimPrefix(providerPath, "/")
 		s.handleGroveProviders(w, r, groveID, providerPath)
+		return
+	}
+
+	// Check for nested /broadcast path (message broker broadcast)
+	if subPath == "broadcast" {
+		s.handleGroveBroadcast(w, r, groveID)
 		return
 	}
 

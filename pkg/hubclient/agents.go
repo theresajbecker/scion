@@ -62,6 +62,11 @@ type AgentService interface {
 	// SendStructuredMessage sends a structured message to an agent.
 	SendStructuredMessage(ctx context.Context, agentID string, msg *messages.StructuredMessage, interrupt bool) error
 
+	// BroadcastMessage broadcasts a structured message to all running agents in the grove.
+	// Uses the Hub's broadcast endpoint which routes through the message broker (if available)
+	// or performs direct fan-out as a fallback.
+	BroadcastMessage(ctx context.Context, msg *messages.StructuredMessage, interrupt bool) error
+
 	// SubmitEnv submits gathered environment variables for an agent after a 202 env-gather response.
 	SubmitEnv(ctx context.Context, agentID string, req *SubmitEnvRequest) (*CreateAgentResponse, error)
 
@@ -399,6 +404,25 @@ func (s *agentService) SendStructuredMessage(ctx context.Context, agentID string
 		Interrupt:         interrupt,
 	}
 	resp, err := s.c.transport.Post(ctx, s.agentPath(agentID)+"/message", body, nil)
+	if err != nil {
+		return err
+	}
+	return apiclient.CheckResponse(resp)
+}
+
+// BroadcastMessage broadcasts a structured message to all running agents in the grove.
+func (s *agentService) BroadcastMessage(ctx context.Context, msg *messages.StructuredMessage, interrupt bool) error {
+	if s.groveID == "" {
+		return fmt.Errorf("broadcast requires a grove-scoped agent service")
+	}
+	body := struct {
+		StructuredMessage *messages.StructuredMessage `json:"structured_message"`
+		Interrupt         bool                        `json:"interrupt,omitempty"`
+	}{
+		StructuredMessage: msg,
+		Interrupt:         interrupt,
+	}
+	resp, err := s.c.transport.Post(ctx, "/api/v1/groves/"+s.groveID+"/broadcast", body, nil)
 	if err != nil {
 		return err
 	}

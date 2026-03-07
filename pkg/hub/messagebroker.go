@@ -1,0 +1,349 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package hub
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"sync"
+
+	"github.com/ptone/scion-agent/pkg/broker"
+	"github.com/ptone/scion-agent/pkg/messages"
+	"github.com/ptone/scion-agent/pkg/store"
+)
+
+// MessageBrokerProxy bridges the message broker with the Hub's agent lifecycle
+// and dispatch infrastructure. It:
+//   - Subscribes to broker topics on behalf of agents (agents don't have direct broker access)
+//   - Dispatches received messages to agents via the existing DispatchAgentMessage path
+//   - Manages subscriptions based on agent lifecycle events (created/deleted)
+//   - Handles broadcast fan-out from a single broker publish to individual agent deliveries
+type MessageBrokerProxy struct {
+	broker        broker.MessageBroker
+	store         store.Store
+	events        *ChannelEventPublisher
+	getDispatcher func() AgentDispatcher
+	log           *slog.Logger
+	messageLog    *slog.Logger
+
+	mu            sync.Mutex
+	subscriptions map[string][]broker.Subscription // groveID -> active subscriptions
+	stopCh        chan struct{}
+	stopOnce      sync.Once
+	wg            sync.WaitGroup
+}
+
+// NewMessageBrokerProxy creates a new MessageBrokerProxy.
+func NewMessageBrokerProxy(
+	b broker.MessageBroker,
+	s store.Store,
+	events *ChannelEventPublisher,
+	getDispatcher func() AgentDispatcher,
+	log *slog.Logger,
+) *MessageBrokerProxy {
+	return &MessageBrokerProxy{
+		broker:        b,
+		store:         s,
+		events:        events,
+		getDispatcher: getDispatcher,
+		log:           log,
+		subscriptions: make(map[string][]broker.Subscription),
+		stopCh:        make(chan struct{}),
+	}
+}
+
+// Start subscribes to agent lifecycle events and sets up broker subscriptions
+// for existing running agents.
+func (p *MessageBrokerProxy) Start() {
+	// Listen for agent lifecycle events to manage broker subscriptions dynamically
+	ch, unsubscribe := p.events.Subscribe(
+		"grove.>.agent.created",
+		"grove.>.agent.status",
+		"grove.>.agent.deleted",
+	)
+
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		defer unsubscribe()
+		for {
+			select {
+			case evt, ok := <-ch:
+				if !ok {
+					return
+				}
+				p.handleLifecycleEvent(evt)
+			case <-p.stopCh:
+				return
+			}
+		}
+	}()
+
+	// Subscribe to global broadcasts
+	p.subscribeGlobalBroadcast()
+
+	p.log.Info("Message broker proxy started")
+}
+
+// Stop signals the proxy to shut down and waits for goroutines to finish.
+func (p *MessageBrokerProxy) Stop() {
+	p.stopOnce.Do(func() {
+		close(p.stopCh)
+		p.wg.Wait()
+
+		// Unsubscribe all broker subscriptions
+		p.mu.Lock()
+		for groveID, subs := range p.subscriptions {
+			for _, sub := range subs {
+				sub.Unsubscribe()
+			}
+			delete(p.subscriptions, groveID)
+		}
+		p.mu.Unlock()
+
+		p.log.Info("Message broker proxy stopped")
+	})
+}
+
+// PublishMessage publishes a message to the appropriate broker topic based on
+// the message's recipient. This is the entry point for Hub handlers to route
+// messages through the broker instead of direct dispatch.
+func (p *MessageBrokerProxy) PublishMessage(ctx context.Context, groveID string, msg *messages.StructuredMessage) error {
+	topic := broker.TopicAgentMessages(groveID, recipientSlug(msg.Recipient))
+	return p.broker.Publish(ctx, topic, msg)
+}
+
+// PublishBroadcast publishes a broadcast message to the grove or global broadcast topic.
+func (p *MessageBrokerProxy) PublishBroadcast(ctx context.Context, groveID string, msg *messages.StructuredMessage) error {
+	if groveID == "" {
+		return p.broker.Publish(ctx, broker.TopicGlobalBroadcast(), msg)
+	}
+	return p.broker.Publish(ctx, broker.TopicGroveBroadcast(groveID), msg)
+}
+
+// EnsureGroveSubscriptions sets up broker subscriptions for all running agents
+// in the specified grove. Called when a grove becomes active or a broker reconnects.
+func (p *MessageBrokerProxy) EnsureGroveSubscriptions(ctx context.Context, groveID string) error {
+	result, err := p.store.ListAgents(ctx, store.AgentFilter{
+		GroveID: groveID,
+		Phase:   "running",
+	}, store.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, agent := range result.Items {
+		p.subscribeAgent(groveID, agent.Slug)
+	}
+
+	// Also subscribe to grove broadcast
+	p.subscribeGroveBroadcast(groveID)
+
+	return nil
+}
+
+// handleLifecycleEvent processes agent lifecycle events to manage subscriptions.
+func (p *MessageBrokerProxy) handleLifecycleEvent(evt Event) {
+	switch {
+	case containsSuffix(evt.Subject, ".agent.created"):
+		var created AgentCreatedEvent
+		if err := json.Unmarshal(evt.Data, &created); err != nil {
+			p.log.Error("Failed to unmarshal agent created event", "error", err)
+			return
+		}
+		p.subscribeAgent(created.GroveID, created.Slug)
+		p.subscribeGroveBroadcast(created.GroveID)
+
+	case containsSuffix(evt.Subject, ".agent.status"):
+		var status AgentStatusEvent
+		if err := json.Unmarshal(evt.Data, &status); err != nil {
+			p.log.Error("Failed to unmarshal agent status event", "error", err)
+			return
+		}
+		// We don't need to take action on status events for the subscription
+		// proxy — subscriptions are per-agent, not per-status. The agent's
+		// subscription persists through status changes until it's deleted.
+
+	case containsSuffix(evt.Subject, ".agent.deleted"):
+		var deleted AgentDeletedEvent
+		if err := json.Unmarshal(evt.Data, &deleted); err != nil {
+			p.log.Error("Failed to unmarshal agent deleted event", "error", err)
+			return
+		}
+		// Agent subscriptions are cleaned up when the grove's subscriptions
+		// are rebuilt. Individual cleanup is handled by the broker's
+		// Unsubscribe mechanism if needed.
+		p.log.Debug("Agent deleted, broker subscriptions will be cleaned on next grove rebuild",
+			"agentID", deleted.AgentID, "groveID", deleted.GroveID)
+	}
+}
+
+// subscribeAgent creates a broker subscription for an individual agent's message topic.
+func (p *MessageBrokerProxy) subscribeAgent(groveID, agentSlug string) {
+	topic := broker.TopicAgentMessages(groveID, agentSlug)
+
+	sub, err := p.broker.Subscribe(topic, func(ctx context.Context, t string, msg *messages.StructuredMessage) {
+		p.deliverToAgent(ctx, groveID, agentSlug, msg)
+	})
+	if err != nil {
+		p.log.Error("Failed to subscribe for agent messages",
+			"groveID", groveID, "agentSlug", agentSlug, "error", err)
+		return
+	}
+
+	p.mu.Lock()
+	p.subscriptions[groveID] = append(p.subscriptions[groveID], sub)
+	p.mu.Unlock()
+
+	p.log.Debug("Subscribed to agent messages", "topic", topic, "agentSlug", agentSlug)
+}
+
+// subscribeGroveBroadcast creates a broker subscription for grove-wide broadcasts
+// that fans out to all running agents in the grove.
+func (p *MessageBrokerProxy) subscribeGroveBroadcast(groveID string) {
+	topic := broker.TopicGroveBroadcast(groveID)
+
+	sub, err := p.broker.Subscribe(topic, func(ctx context.Context, t string, msg *messages.StructuredMessage) {
+		p.fanOutToGrove(ctx, groveID, msg)
+	})
+	if err != nil {
+		p.log.Error("Failed to subscribe for grove broadcast",
+			"groveID", groveID, "error", err)
+		return
+	}
+
+	p.mu.Lock()
+	p.subscriptions[groveID] = append(p.subscriptions[groveID], sub)
+	p.mu.Unlock()
+
+	p.log.Debug("Subscribed to grove broadcast", "topic", topic)
+}
+
+// subscribeGlobalBroadcast creates a broker subscription for global broadcasts.
+func (p *MessageBrokerProxy) subscribeGlobalBroadcast() {
+	topic := broker.TopicGlobalBroadcast()
+
+	_, err := p.broker.Subscribe(topic, func(ctx context.Context, t string, msg *messages.StructuredMessage) {
+		p.fanOutGlobal(ctx, msg)
+	})
+	if err != nil {
+		p.log.Error("Failed to subscribe for global broadcast", "error", err)
+	}
+}
+
+// deliverToAgent dispatches a message to a specific agent via the existing
+// DispatchAgentMessage path.
+func (p *MessageBrokerProxy) deliverToAgent(ctx context.Context, groveID, agentSlug string, msg *messages.StructuredMessage) {
+	dispatcher := p.getDispatcher()
+	if dispatcher == nil {
+		p.log.Warn("No dispatcher available, cannot deliver broker message",
+			"agentSlug", agentSlug)
+		return
+	}
+
+	agent, err := p.store.GetAgentBySlug(ctx, groveID, agentSlug)
+	if err != nil {
+		p.log.Error("Failed to find agent for broker message delivery",
+			"agentSlug", agentSlug, "groveID", groveID, "error", err)
+		return
+	}
+
+	if agent.RuntimeBrokerID == "" {
+		p.log.Warn("Agent has no runtime broker, skipping broker message delivery",
+			"agentSlug", agentSlug)
+		return
+	}
+
+	if err := dispatcher.DispatchAgentMessage(ctx, agent, msg.Msg, msg.Urgent, msg); err != nil {
+		p.log.Error("Failed to dispatch broker message to agent",
+			"agentSlug", agentSlug, "error", err)
+		return
+	}
+
+	// Log to dedicated message audit log
+	if p.messageLog != nil {
+		logAttrs := []any{
+			"agent_id", agent.ID,
+			"agent_name", agent.Name,
+			"source", "broker",
+		}
+		logAttrs = append(logAttrs, msg.LogAttrs()...)
+		p.messageLog.Info("broker message delivered", logAttrs...)
+	}
+}
+
+// fanOutToGrove dispatches a broadcast message to all running agents in a grove.
+func (p *MessageBrokerProxy) fanOutToGrove(ctx context.Context, groveID string, msg *messages.StructuredMessage) {
+	result, err := p.store.ListAgents(ctx, store.AgentFilter{
+		GroveID: groveID,
+		Phase:   "running",
+	}, store.ListOptions{})
+	if err != nil {
+		p.log.Error("Failed to list agents for grove broadcast fan-out",
+			"groveID", groveID, "error", err)
+		return
+	}
+
+	p.log.Debug("Broadcasting to grove agents", "groveID", groveID, "count", len(result.Items))
+
+	for _, agent := range result.Items {
+		// Skip the sender if it's an agent in this grove
+		if msg.Sender == "agent:"+agent.Slug {
+			continue
+		}
+		agentMsg := *msg // copy to set per-agent recipient
+		agentMsg.Recipient = "agent:" + agent.Slug
+		p.deliverToAgent(ctx, groveID, agent.Slug, &agentMsg)
+	}
+}
+
+// fanOutGlobal dispatches a global broadcast to all running agents across all groves.
+func (p *MessageBrokerProxy) fanOutGlobal(ctx context.Context, msg *messages.StructuredMessage) {
+	result, err := p.store.ListAgents(ctx, store.AgentFilter{
+		Phase: "running",
+	}, store.ListOptions{})
+	if err != nil {
+		p.log.Error("Failed to list agents for global broadcast fan-out", "error", err)
+		return
+	}
+
+	p.log.Debug("Global broadcast to all agents", "count", len(result.Items))
+
+	for _, agent := range result.Items {
+		if msg.Sender == "agent:"+agent.Slug {
+			continue
+		}
+		agentMsg := *msg
+		agentMsg.Recipient = "agent:" + agent.Slug
+		p.deliverToAgent(ctx, agent.GroveID, agent.Slug, &agentMsg)
+	}
+}
+
+// recipientSlug extracts the slug from a recipient identity string.
+// e.g. "agent:code-reviewer" -> "code-reviewer"
+func recipientSlug(recipient string) string {
+	for i, c := range recipient {
+		if c == ':' {
+			return recipient[i+1:]
+		}
+	}
+	return recipient
+}
+
+// containsSuffix checks if a dot-separated subject string ends with the given suffix.
+func containsSuffix(subject, suffix string) bool {
+	return len(subject) >= len(suffix) && subject[len(subject)-len(suffix):] == suffix
+}

@@ -227,70 +227,68 @@ func sendMessageViaHub(hubCtx *HubContext, agentName string, message string, int
 		PrintUsingHub(hubCtx.Endpoint)
 	}
 
-	// Resolve the agent service once: grove-scoped or global depending on mode.
-	var agentSvc hubclient.AgentService
-	if all {
-		agentSvc = hubCtx.Client.Agents()
-	} else {
+	// Resolve sender identity for structured messages
+	sender := resolveSenderIdentity(hubCtx)
+
+	// Grove-scoped broadcast: use the Hub's broadcast endpoint (single API call).
+	// The Hub handles fan-out via the message broker or direct dispatch.
+	if broadcast && !all {
 		groveID, err := GetGroveID(hubCtx)
 		if err != nil {
 			return wrapHubError(err)
 		}
-		agentSvc = hubCtx.Client.GroveAgents(groveID)
-	}
+		agentSvc := hubCtx.Client.GroveAgents(groveID)
 
-	var targets []string
+		if !isJSONOutput() {
+			fmt.Println("Broadcasting message to grove agents via Hub...")
+		}
 
-	if broadcast || all {
-		// List running agents from Hub
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		opts := &hubclient.ListAgentsOptions{
-			Status: "running",
+		msg := buildStructuredMessage(sender, "grove:broadcast", message)
+		if err := agentSvc.BroadcastMessage(ctx, msg, interrupt); err != nil {
+			return wrapHubError(fmt.Errorf("failed to broadcast message via Hub: %w", err))
 		}
 
-		resp, err := agentSvc.List(ctx, opts)
+		if !isJSONOutput() {
+			fmt.Println("Broadcast message sent via Hub.")
+		}
+		return nil
+	}
+
+	// Global broadcast (--all): fan-out at client level across groves.
+	// Each grove doesn't have a global broadcast endpoint, so we list all
+	// running agents and send individually.
+	if all {
+		agentSvc := hubCtx.Client.Agents()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		resp, err := agentSvc.List(ctx, &hubclient.ListAgentsOptions{Status: "running"})
 		if err != nil {
 			return wrapHubError(fmt.Errorf("failed to list agents via Hub: %w", err))
 		}
 
-		for _, a := range resp.Agents {
-			targets = append(targets, a.Name)
-		}
-
-		if len(targets) == 0 {
+		if len(resp.Agents) == 0 {
 			fmt.Println("No running agents found to broadcast to.")
 			return nil
 		}
-	} else {
-		targets = []string{agentName}
-	}
 
-	// Resolve sender identity for structured messages
-	sender := resolveSenderIdentity(hubCtx)
-
-	if len(targets) > 1 {
 		if !isJSONOutput() {
-			fmt.Printf("Broadcasting message to %d agents...\n", len(targets))
+			fmt.Printf("Broadcasting message to %d agents...\n", len(resp.Agents))
 		}
+
 		var wg sync.WaitGroup
-		for _, target := range targets {
+		for _, a := range resp.Agents {
 			wg.Add(1)
 			go func(name string) {
 				defer wg.Done()
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 
-				// Determine recipient for the broadcast target
-				var recipient string
-				if broadcast {
-					recipient = "agent:" + name
-				} else {
-					recipient = "agent:" + name
-				}
-
-				msg := buildStructuredMessage(sender, recipient, message)
+				msg := buildStructuredMessage(sender, "agent:"+name, message)
 				if err := agentSvc.SendStructuredMessage(ctx, name, msg, interrupt); err != nil {
 					fmt.Printf("Warning: failed to send message to agent '%s' via Hub: %s\n", name, err)
 					return
@@ -298,34 +296,34 @@ func sendMessageViaHub(hubCtx *HubContext, agentName string, message string, int
 				if !isJSONOutput() {
 					fmt.Printf("Message delivered to agent '%s' via Hub.\n", name)
 				}
-			}(target)
+			}(a.Name)
 		}
 		wg.Wait()
-	} else {
-		for _, target := range targets {
-			if !isJSONOutput() {
-				fmt.Printf("Sending message to agent '%s'...\n", target)
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
-			msg := buildStructuredMessage(sender, "agent:"+target, message)
-			if err := agentSvc.SendStructuredMessage(ctx, target, msg, interrupt); err != nil {
-				cancel()
-				if broadcast || all {
-					fmt.Printf("Warning: failed to send message to agent '%s' via Hub: %s\n", target, err)
-					continue
-				}
-				return wrapHubError(fmt.Errorf("failed to send message to agent '%s' via Hub: %w", target, err))
-			}
-			cancel()
-
-			if !isJSONOutput() {
-				fmt.Printf("Message sent to agent '%s' via Hub.\n", target)
-			}
-		}
+		return nil
 	}
 
+	// Single agent: direct message
+	groveID, err := GetGroveID(hubCtx)
+	if err != nil {
+		return wrapHubError(err)
+	}
+	agentSvc := hubCtx.Client.GroveAgents(groveID)
+
+	if !isJSONOutput() {
+		fmt.Printf("Sending message to agent '%s'...\n", agentName)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	msg := buildStructuredMessage(sender, "agent:"+agentName, message)
+	if err := agentSvc.SendStructuredMessage(ctx, agentName, msg, interrupt); err != nil {
+		return wrapHubError(fmt.Errorf("failed to send message to agent '%s' via Hub: %w", agentName, err))
+	}
+
+	if !isJSONOutput() {
+		fmt.Printf("Message sent to agent '%s' via Hub.\n", agentName)
+	}
 	return nil
 }
 

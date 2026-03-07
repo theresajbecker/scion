@@ -38,6 +38,7 @@ import (
 	"github.com/ptone/scion-agent/pkg/agent"
 	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/broker"
 	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/brokercredentials"
 	"github.com/ptone/scion-agent/pkg/config"
@@ -1178,6 +1179,22 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			registry := hub.NewChannelRegistry(channelConfigs, logging.Subsystem("hub.notification-channels"))
 			hubSrv.SetChannelRegistry(registry)
 			log.Printf("Notification channels configured: %d channel(s) registered", registry.Len())
+		}
+
+		// Initialize message broker from versioned settings
+		if vs, err := config.LoadVersionedSettings(""); err == nil && vs.Server != nil && vs.Server.MessageBroker != nil && vs.Server.MessageBroker.Enabled {
+			brokerType := vs.Server.MessageBroker.Type
+			if brokerType == "" {
+				brokerType = "inprocess"
+			}
+			switch brokerType {
+			case "inprocess":
+				b := broker.NewInProcessBroker(logging.Subsystem("hub.broker.inprocess"))
+				hubSrv.StartMessageBroker(b)
+				log.Printf("Message broker started: type=%s", brokerType)
+			default:
+				log.Printf("Warning: unknown message broker type %q, skipping", brokerType)
+			}
 		}
 
 		// Initialize storage if configured

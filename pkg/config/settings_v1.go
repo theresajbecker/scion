@@ -224,6 +224,11 @@ type V1ServerConfig struct {
 	// NotificationChannels configures external notification delivery channels.
 	// Secrets (webhook URLs, API tokens) are held in memory only — never persisted to a database.
 	NotificationChannels []V1NotificationChannelConfig `json:"notification_channels,omitempty" yaml:"notification_channels,omitempty" koanf:"notification_channels"`
+
+	// MessageBroker configures the message broker for pub/sub message routing.
+	// When enabled, messages are routed through the broker instead of direct dispatch,
+	// enabling topic-based subscriptions and broadcast fan-out at the Hub level.
+	MessageBroker *V1MessageBrokerConfig `json:"message_broker,omitempty" yaml:"message_broker,omitempty" koanf:"message_broker"`
 }
 
 // V1NotificationChannelConfig holds configuration for an external notification channel.
@@ -232,6 +237,14 @@ type V1NotificationChannelConfig struct {
 	Params           map[string]string `json:"params,omitempty" yaml:"params,omitempty" koanf:"params"`
 	FilterTypes      []string          `json:"filter_types,omitempty" yaml:"filter_types,omitempty" koanf:"filter_types"`
 	FilterUrgentOnly bool              `json:"filter_urgent_only,omitempty" yaml:"filter_urgent_only,omitempty" koanf:"filter_urgent_only"`
+}
+
+// V1MessageBrokerConfig configures the message broker adapter.
+type V1MessageBrokerConfig struct {
+	// Enabled controls whether the message broker is active. Default false.
+	Enabled bool `json:"enabled,omitempty" yaml:"enabled,omitempty" koanf:"enabled"`
+	// Type selects the broker adapter: "inprocess" (default). Future: "nats", "redis".
+	Type string `json:"type,omitempty" yaml:"type,omitempty" koanf:"type"`
 }
 
 // V1ServerHubConfig holds the Hub API server settings (when running scion-server).
