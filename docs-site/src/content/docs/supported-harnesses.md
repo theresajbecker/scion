@@ -77,7 +77,7 @@ Codex supports two authentication methods (auto-detected in this order):
 
 ### Configuration
 - **Config File**: `~/.codex/config.toml`.
-- **Default Flags**: Runs with `--yolo` enabled by default.
+- **Default Flags**: Runs with `--full-auto` approval mode enabled by default.
 - **Resume Support**: Automatically uses the `resume` positional argument to continue existing sessions.
 
 ### Known Limitations
