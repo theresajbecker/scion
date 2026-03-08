@@ -653,6 +653,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}(),
 		GitClone:   opts.GitClone,
 		BrokerMode: opts.BrokerMode,
+		Debug:      util.DebugEnabled(),
 		Resume:     opts.Resume,
 		Labels: map[string]string{
 			"scion.agent":          "true",

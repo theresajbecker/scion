@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -135,6 +136,8 @@ func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, 
 
 	pod := r.buildPod(namespace, config)
 
+	writeK8sRuntimeDebugFile(config, namespace, pod)
+
 	fmt.Printf("  Provisioning pod '%s' in namespace '%s'...\n", config.Name, namespace)
 	createdPod, err := r.Client.Clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 	if err != nil {
@@ -225,6 +228,28 @@ func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, 
 
 	fmt.Printf("Agent '%s' started successfully.\n", createdPod.Name)
 	return createdPod.Name, nil
+}
+
+// writeK8sRuntimeDebugFile writes a kubectl-style representation of the pod
+// spec to the runtime-exec-debug file for diagnostic purposes.
+func writeK8sRuntimeDebugFile(config RunConfig, namespace string, pod *corev1.Pod) {
+	if !config.Debug || config.HomeDir == "" {
+		return
+	}
+	agentDir := filepath.Dir(config.HomeDir)
+	debugPath := filepath.Join(agentDir, "runtime-exec-debug")
+
+	podJSON, err := json.MarshalIndent(pod, "", "  ")
+	if err != nil {
+		runtimeLog.Debug("Failed to marshal pod spec for debug file", "error", err)
+		return
+	}
+
+	content := fmt.Sprintf("# kubectl apply -f - <<'EOF'\n%s\n# EOF\n#\n# Equivalent:\n# kubectl apply -n %s -f <this-file's-json-content>\n", string(podJSON), namespace)
+
+	if err := os.WriteFile(debugPath, []byte(content), 0644); err != nil {
+		runtimeLog.Debug("Failed to write runtime debug file", "path", debugPath, "error", err)
+	}
 }
 
 // createAgentSecret creates a K8s Secret containing all resolved secret values.

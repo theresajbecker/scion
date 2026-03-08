@@ -114,6 +114,8 @@ func (r *AppleContainerRuntime) Run(ctx context.Context, config RunConfig) (stri
 		}
 	}
 
+	WriteRuntimeDebugFile(config, r.Command, newArgs)
+
 	out, err := runSimpleCommand(ctx, r.Command, newArgs...)
 	if err != nil {
 		return "", fmt.Errorf("container run failed: %w (output: %s)", err, out)

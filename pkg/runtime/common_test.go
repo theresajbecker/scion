@@ -700,6 +700,88 @@ func TestGcloudMountPreCreatesDirectory(t *testing.T) {
 	}
 }
 
+func TestWriteRuntimeDebugFile(t *testing.T) {
+	t.Run("writes file when debug is true", func(t *testing.T) {
+		agentDir := t.TempDir()
+		homeDir := filepath.Join(agentDir, "home")
+		os.MkdirAll(homeDir, 0755)
+
+		config := RunConfig{
+			Debug:   true,
+			HomeDir: homeDir,
+		}
+
+		WriteRuntimeDebugFile(config, "docker", []string{
+			"run", "-t", "--name", "my-agent",
+			"-e", "FOO=bar",
+			"-v", "/host:/container",
+			"my-image:latest",
+			"tmux", "new-session", "-s", "scion",
+		})
+
+		debugPath := filepath.Join(agentDir, "runtime-exec-debug")
+		content, err := os.ReadFile(debugPath)
+		if err != nil {
+			t.Fatalf("expected debug file to exist: %v", err)
+		}
+
+		text := string(content)
+
+		// Should start with the command
+		if !strings.HasPrefix(text, "docker") {
+			t.Errorf("expected file to start with 'docker', got: %s", text)
+		}
+
+		// Should have continuation characters
+		if !strings.Contains(text, " \\\n  ") {
+			t.Errorf("expected backslash continuation characters, got: %s", text)
+		}
+
+		// Should contain each arg on its own line
+		lines := strings.Split(text, "\n")
+		// First line is "docker \", remaining are "  arg \" (last arg has no \)
+		if len(lines) < 10 {
+			t.Errorf("expected at least 10 lines (one per arg), got %d: %s", len(lines), text)
+		}
+
+		// Should contain specific args
+		if !strings.Contains(text, "--name") {
+			t.Errorf("expected --name in debug file, got: %s", text)
+		}
+		if !strings.Contains(text, "my-image:latest") {
+			t.Errorf("expected image in debug file, got: %s", text)
+		}
+	})
+
+	t.Run("no-op when debug is false", func(t *testing.T) {
+		agentDir := t.TempDir()
+		homeDir := filepath.Join(agentDir, "home")
+		os.MkdirAll(homeDir, 0755)
+
+		config := RunConfig{
+			Debug:   false,
+			HomeDir: homeDir,
+		}
+
+		WriteRuntimeDebugFile(config, "docker", []string{"run", "test"})
+
+		debugPath := filepath.Join(agentDir, "runtime-exec-debug")
+		if _, err := os.Stat(debugPath); err == nil {
+			t.Error("expected no debug file when debug is false")
+		}
+	})
+
+	t.Run("no-op when HomeDir is empty", func(t *testing.T) {
+		config := RunConfig{
+			Debug:   true,
+			HomeDir: "",
+		}
+
+		// Should not panic
+		WriteRuntimeDebugFile(config, "docker", []string{"run", "test"})
+	})
+}
+
 func TestGcloudMountSkippedInBrokerMode(t *testing.T) {
 	// In broker mode, the gcloud auto-mount should be skipped to avoid
 	// leaking the broker operator's GCP credentials into agent containers.

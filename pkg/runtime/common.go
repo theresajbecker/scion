@@ -400,6 +400,31 @@ func insertVolumeFlags(args []string, image string, mountSpecs []string) []strin
 	return result
 }
 
+// WriteRuntimeDebugFile writes the full runtime execution command to a debug
+// file inside the agent directory for diagnostic purposes. The command is
+// formatted with one argument per line using backslash continuation characters
+// for readability. The file is written to <agentDir>/runtime-exec-debug.
+// This is a no-op if config.Debug is false or HomeDir is empty.
+func WriteRuntimeDebugFile(config RunConfig, command string, args []string) {
+	if !config.Debug || config.HomeDir == "" {
+		return
+	}
+	agentDir := filepath.Dir(config.HomeDir)
+	debugPath := filepath.Join(agentDir, "runtime-exec-debug")
+
+	var buf strings.Builder
+	buf.WriteString(command)
+	for _, arg := range args {
+		buf.WriteString(" \\\n  ")
+		buf.WriteString(arg)
+	}
+	buf.WriteString("\n")
+
+	if err := os.WriteFile(debugPath, []byte(buf.String()), 0644); err != nil {
+		runtimeLog.Debug("Failed to write runtime debug file", "path", debugPath, "error", err)
+	}
+}
+
 // expandTildeTarget expands a ~/ prefix in a target path to the container user's
 // home directory. Paths without ~/ are returned unchanged.
 func expandTildeTarget(target, containerHome string) string {

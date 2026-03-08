@@ -43,6 +43,7 @@ type RunConfig struct {
 	Kubernetes      *api.KubernetesConfig
 	GitClone        *api.GitCloneConfig
 	BrokerMode      bool
+	Debug           bool
 }
 
 type Runtime interface {

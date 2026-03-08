@@ -102,6 +102,8 @@ func (r *DockerRuntime) Run(ctx context.Context, config RunConfig) (string, erro
 	// docker flags rather than arguments to the container command.
 	newArgs = insertVolumeFlags(newArgs, config.Image, secretMountSpecs)
 
+	WriteRuntimeDebugFile(config, r.Command, newArgs)
+
 	out, err := runSimpleCommand(ctx, r.Command, newArgs...)
 	if err != nil {
 		return "", fmt.Errorf("container run failed: %w (output: %s)", err, out)
