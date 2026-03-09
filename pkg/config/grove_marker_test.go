@@ -360,16 +360,33 @@ func TestGetAgentHomePath_NoGroveID(t *testing.T) {
 }
 
 func TestIsHubContext(t *testing.T) {
-	// Without SCION_HUB_ENDPOINT, IsHubContext should return false
+	// Clear all hub env vars
 	t.Setenv("SCION_HUB_ENDPOINT", "")
+	t.Setenv("SCION_HUB_URL", "")
+	t.Setenv("SCION_GROVE_ID", "")
+
 	if IsHubContext() {
-		t.Error("expected IsHubContext() = false when SCION_HUB_ENDPOINT is empty")
+		t.Error("expected IsHubContext() = false when no hub env vars are set")
 	}
 
-	// With SCION_HUB_ENDPOINT set, IsHubContext should return true
+	// SCION_HUB_ENDPOINT alone
 	t.Setenv("SCION_HUB_ENDPOINT", "http://hub.example.com")
 	if !IsHubContext() {
 		t.Error("expected IsHubContext() = true when SCION_HUB_ENDPOINT is set")
+	}
+	t.Setenv("SCION_HUB_ENDPOINT", "")
+
+	// SCION_HUB_URL alone (legacy)
+	t.Setenv("SCION_HUB_URL", "http://hub.example.com")
+	if !IsHubContext() {
+		t.Error("expected IsHubContext() = true when SCION_HUB_URL is set")
+	}
+	t.Setenv("SCION_HUB_URL", "")
+
+	// SCION_GROVE_ID alone (broker-dispatched)
+	t.Setenv("SCION_GROVE_ID", "grove-uuid-123")
+	if !IsHubContext() {
+		t.Error("expected IsHubContext() = true when SCION_GROVE_ID is set")
 	}
 }
 

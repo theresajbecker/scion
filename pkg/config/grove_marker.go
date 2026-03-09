@@ -138,8 +138,12 @@ func IsOldStyleNonGitGrove(scionPath string) bool {
 // IsHubContext returns true if hub context environment variables are available,
 // indicating the CLI is running inside a hub-connected agent container where
 // grove data should be accessed via the Hub API rather than the local filesystem.
+// Checks SCION_HUB_ENDPOINT (primary), SCION_HUB_URL (legacy), and
+// SCION_GROVE_ID (always set for broker-dispatched agents).
 func IsHubContext() bool {
-	return os.Getenv("SCION_HUB_ENDPOINT") != ""
+	return os.Getenv("SCION_HUB_ENDPOINT") != "" ||
+		os.Getenv("SCION_HUB_URL") != "" ||
+		os.Getenv("SCION_GROVE_ID") != ""
 }
 
 // WriteWorkspaceMarker writes a minimal .scion marker file into a workspace

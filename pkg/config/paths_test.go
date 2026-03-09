@@ -186,6 +186,8 @@ func TestRequireGrovePath_NoProjectError(t *testing.T) {
 
 	// Ensure no hub context
 	t.Setenv("SCION_HUB_ENDPOINT", "")
+	t.Setenv("SCION_HUB_URL", "")
+	t.Setenv("SCION_GROVE_ID", "")
 
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatal(err)
@@ -259,7 +261,7 @@ func TestFindProjectRoot_HubContextNoScion(t *testing.T) {
 }
 
 func TestFindProjectRoot_HubContextNoScion_Disabled(t *testing.T) {
-	// Without SCION_HUB_ENDPOINT, FindProjectRoot should still fail
+	// Without any hub env vars, FindProjectRoot should still fail
 	// when no .scion exists.
 	tmpDir := t.TempDir()
 
@@ -269,6 +271,8 @@ func TestFindProjectRoot_HubContextNoScion_Disabled(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	t.Setenv("SCION_HUB_ENDPOINT", "")
+	t.Setenv("SCION_HUB_URL", "")
+	t.Setenv("SCION_GROVE_ID", "")
 
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatal(err)
