@@ -87,7 +87,7 @@ there instead for easier configuration changes without re-deploying the
 service file.
 
 **Resolution:** Move the OTEL `Environment=` lines out of the systemd unit
-template in `gce-start-hub.sh` and into `hub.env.example` as uncommented
+template in `gce-start-hub.sh` and into `hub.env.sample` as uncommented
 defaults. Section 2.1 below documents the target state.
 
 ---
@@ -164,14 +164,14 @@ itself.
 ### 2.1 Environment variables
 
 The following environment variables control Hub-side telemetry. They should
-be managed in the `hub.env` file (see `scripts/starter-hub/hub.env.example` for the
+be managed in the `hub.env` file (see `scripts/starter-hub/hub.env.sample` for the
 template). The systemd unit loads this file via
 `EnvironmentFile=/home/scion/.scion/hub.env`.
 
-To set up, copy the example and fill in values:
+To set up, copy the sample and fill in values:
 
 ```bash
-cp scripts/starter-hub/hub.env.example .scratch/hub.env
+cp scripts/starter-hub/hub.env.sample .scratch/hub.env
 # Edit .scratch/hub.env with your values
 ```
 
@@ -482,7 +482,7 @@ gcloud compute ssh scion-demo --zone us-central1-a --command '
 |--------|---------|
 | `scripts/starter-hub/gce-demo-provision.sh` | Create GCE instance with APIs and IAM roles |
 | `scripts/starter-hub/gce-start-hub.sh` | Build, deploy, and start Hub with OTEL config |
-| `scripts/starter-hub/hub.env.example` | Template for `.scratch/hub.env` |
+| `scripts/starter-hub/hub.env.sample` | Template for `.scratch/hub.env` |
 
 ---
 

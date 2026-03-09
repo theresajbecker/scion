@@ -88,4 +88,3 @@ the telemetry service account.
 | `gce-demo-cloud-init.yaml` | Cloud-init config installed on the VM at provision time |
 | `gce-setup-nats.sh` | *(Archived)* Standalone NATS server setup — superseded by in-process events |
 | `hub.env.sample` | Template for the environment file (copy to `.scratch/hub.env`) |
-| `hub.env.example` | Minimal env example (kept for reference) |

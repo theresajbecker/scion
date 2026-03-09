@@ -137,6 +137,7 @@ telemetry:
   enabled: false
   cloud:
     enabled: true
+    provider: "gcp"
     endpoint: "cloudtrace.googleapis.com:443"
     protocol: "grpc"
     batch:
