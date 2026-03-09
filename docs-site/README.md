@@ -41,7 +41,15 @@ All commands are run from the `docs-site` directory:
 
 ## 🚢 Deployment
 
-The documentation site is containerized and can be deployed to Google Cloud Run.
+### GitHub Pages
+
+The docs site is automatically built and deployed to GitHub Pages on pushes to `main` that change files in `docs-site/`. The workflow can also be triggered manually from the Actions tab.
+
+**Repository setup:** In the GitHub repo settings, go to **Settings → Pages → Source** and set it to **GitHub Actions**.
+
+### Google Cloud Run
+
+The documentation site is also containerized and can be deployed to Google Cloud Run.
 
 ### Local Container Build
 
