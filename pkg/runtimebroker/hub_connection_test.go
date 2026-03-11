@@ -549,6 +549,37 @@ func TestGlobalGroveRejection_WithGroveID_MultiHub(t *testing.T) {
 	}
 }
 
+func TestGlobalGroveRejection_GitGroveWithGroveID_NoPath_MultiHub(t *testing.T) {
+	// Multi-hub mode: a git-based grove has a groveID but no grovePath or
+	// groveSlug (the broker resolves workspace from the git remote). This
+	// should NOT be treated as the global grove.
+	creds := makeTestCreds("local", "broker-1", "http://localhost:8080")
+	srv := newTestServerWithInMemoryCreds(creds)
+
+	creds2 := makeTestCreds("hub-prod", "broker-2", "https://hub.prod.example.com")
+	conn2, _ := srv.createHubConnection("hub-prod", creds2)
+	srv.hubMu.Lock()
+	srv.hubConnections["hub-prod"] = conn2
+	srv.hubMu.Unlock()
+
+	body := `{
+		"name": "git-grove-agent",
+		"groveId": "abc-123-grove-id",
+		"config": {"template": "claude"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	// Should NOT be rejected — groveID is set, so this is not the global grove
+	if w.Code == http.StatusConflict {
+		t.Errorf("expected git-based grove (groveID set, no path) to be allowed in multi-hub mode, got %d: %s",
+			w.Code, w.Body.String())
+	}
+}
+
 func TestIsMultiHubMode(t *testing.T) {
 	srv := newTestServer()
 
@@ -587,8 +618,9 @@ func TestIsGlobalGrove(t *testing.T) {
 	}{
 		{"empty both", "", "", true},
 		{"global id", "global", "/some/path", true},
-		{"empty id", "", "/some/path", true},
-		{"empty path", "my-project", "", true},
+		{"global id empty path", "global", "", true},
+		{"empty id with path", "", "/some/path", false},
+		{"groveID set empty path", "my-project", "", false},
 		{"both set", "my-project", "/some/path", false},
 	}
 

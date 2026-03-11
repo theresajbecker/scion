@@ -1019,8 +1019,11 @@ func (s *Server) isMultiHubMode() bool {
 }
 
 // isGlobalGrove returns true if the grove is the global grove.
+// A request with a specific (non-empty, non-"global") GroveID is never the
+// global grove, even when grovePath is empty (e.g. git-based groves where the
+// broker resolves the workspace from a git remote rather than a local path).
 func (s *Server) isGlobalGrove(groveID, grovePath string) bool {
-	return groveID == "global" || groveID == "" || grovePath == ""
+	return groveID == "global" || (groveID == "" && grovePath == "")
 }
 
 // resolveHydrator resolves the hydrator for a request, routing to the correct
