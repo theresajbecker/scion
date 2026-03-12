@@ -463,7 +463,13 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			secretTargets := make(map[string]struct{})
 			for _, s := range req.ResolvedSecrets {
 				if s.Type == "environment" || s.Type == "" {
-					secretTargets[s.Target] = struct{}{}
+					target := s.Target
+					if target == "" {
+						target = s.Name
+					}
+					if target != "" {
+						secretTargets[target] = struct{}{}
+					}
 				}
 				if s.Type == "file" {
 					secretTargets[s.Name] = struct{}{}
@@ -1507,8 +1513,18 @@ func (s *Server) extractRequiredEnvKeys(req CreateAgentRequest) ([]string, map[s
 	required := make(map[string]struct{})
 
 	var settings *config.VersionedSettings
-	if req.GrovePath != "" {
-		vs, _, err := config.LoadEffectiveSettings(req.GrovePath)
+	settingsPath := req.GrovePath
+	if settingsPath == "" {
+		// Fall back to the broker's global .scion directory for settings
+		// resolution. This matches what agent.Start → GetResolvedProjectDir("")
+		// does when grovePath is empty (e.g., hub-only git groves without a
+		// linked local path on the broker).
+		if globalDir, err := config.GetGlobalDir(); err == nil {
+			settingsPath = globalDir
+		}
+	}
+	if settingsPath != "" {
+		vs, _, err := config.LoadEffectiveSettings(settingsPath)
 		if err == nil {
 			settings = vs
 		}
@@ -1602,7 +1618,13 @@ func (s *Server) extractRequiredEnvKeys(req CreateAgentRequest) ([]string, map[s
 			}
 			for _, sec := range req.ResolvedSecrets {
 				if sec.Type == "environment" || sec.Type == "" {
-					envKeys[sec.Target] = struct{}{}
+					target := sec.Target
+					if target == "" {
+						target = sec.Name
+					}
+					if target != "" {
+						envKeys[target] = struct{}{}
+					}
 				}
 			}
 

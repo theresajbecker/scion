@@ -1695,6 +1695,132 @@ profiles:
 // TestEnvGather_HarnessAuthOverrideVertexAI tests that --harness-auth vertex-ai
 // overrides auto-detect and requires vertex-ai credentials even when an API key
 // would otherwise be detected as sufficient.
+// TestEnvGather_NoGrovePath_GlobalFallback tests that when grovePath is empty
+// (e.g. hub-only git groves), the broker falls back to the global ~/.scion
+// directory for settings resolution, so auth env keys are still detected.
+func TestEnvGather_NoGrovePath_GlobalFallback(t *testing.T) {
+	// Set up a fake HOME with global .scion settings
+	fakeHome := t.TempDir()
+	globalDir := filepath.Join(fakeHome, ".scion")
+	if err := os.MkdirAll(globalDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write settings with a gemini harness config
+	settingsYAML := `
+schema_version: "1"
+default_harness_config: gemini
+harness_configs:
+  gemini:
+    harness: gemini
+profiles:
+  default:
+    runtime: mock
+`
+	if err := os.WriteFile(filepath.Join(globalDir, "settings.yaml"), []byte(settingsYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create harness-config directory
+	hcDir := filepath.Join(globalDir, "harness-configs", "gemini")
+	if err := os.MkdirAll(hcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hcDir, "config.yaml"), []byte("harness: gemini\nimage: test-image\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override HOME so GetGlobalDir() finds our fake home
+	origHome := os.Getenv("HOME")
+	t.Setenv("HOME", fakeHome)
+	defer os.Setenv("HOME", origHome)
+
+	cfg := DefaultServerConfig()
+	cfg.BrokerID = "test-broker-id"
+	cfg.BrokerName = "test-host"
+	cfg.Debug = true
+	cfg.StateDir = t.TempDir()
+	mgr := &envCapturingManager{}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	// Send create request with NO grovePath — simulates hub-only git grove
+	body := `{
+		"name": "test-agent-no-grove",
+		"id": "agent-uuid-no-grove",
+		"gatherEnv": true,
+		"config": {"profile": "default"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	// Should return 202 because GEMINI_API_KEY (or GOOGLE_API_KEY) is missing
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 (missing GEMINI_API_KEY with no grovePath), got %d: %s", w.Code, w.Body.String())
+	}
+
+	var envReqs EnvRequirementsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &envReqs); err != nil {
+		t.Fatal("failed to decode response:", err)
+	}
+
+	// GEMINI_API_KEY should be in the needs list
+	found := false
+	for _, k := range envReqs.Needs {
+		if k == "GEMINI_API_KEY" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected GEMINI_API_KEY in needs when no grovePath set, got needs=%v required=%v", envReqs.Needs, envReqs.Required)
+	}
+}
+
+// TestEnvGather_SecretTargetFallbackToName tests that resolved secrets with
+// empty Target fields fall back to Name for env-gather satisfaction checks.
+func TestEnvGather_SecretTargetFallbackToName(t *testing.T) {
+	settings := `
+schema_version: "1"
+harness_configs:
+  gemini:
+    harness: gemini
+    env:
+      CUSTOM_KEY: ""
+profiles:
+  default:
+    runtime: mock
+`
+	srv, _, groveDir := newTestServerWithGrovePath(t, settings)
+
+	// Send a request with a resolved secret that has Name but no Target
+	body := `{
+		"name": "test-agent-target-fallback",
+		"id": "agent-uuid-target-fb",
+		"gatherEnv": true,
+		"grovePath": "` + groveDir + `",
+		"config": {"template": "gemini", "profile": "default"},
+		"resolvedSecrets": [
+			{"name": "GEMINI_API_KEY", "type": "environment", "value": "sk-test", "target": ""},
+			{"name": "CUSTOM_KEY", "type": "environment", "value": "custom-val", "target": ""}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	// Should return 201 because both GEMINI_API_KEY and CUSTOM_KEY are
+	// satisfied via the Name fallback in resolved secrets
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 (secrets with Name fallback should satisfy keys), got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestEnvGather_HarnessAuthOverrideVertexAI(t *testing.T) {
 	srv, _, groveDir := newTestServerWithHarnessConfig(t, "gemini",
 		"harness: gemini\nimage: test-image\nuser: scion\n",
