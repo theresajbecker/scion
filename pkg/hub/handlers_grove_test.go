@@ -795,6 +795,83 @@ func TestResolveRuntimeBroker_HubNativeGrove_NoLocalPath(t *testing.T) {
 		"LocalPath should NOT be set when auto-linking during agent creation for hub-native grove")
 }
 
+// TestGroveRegisterPreservesProviderLocalPath verifies that re-registering a
+// grove from a local checkout does not overwrite an existing provider's empty
+// localPath. This prevents a hub-native git grove (where agents clone from a
+// URL) from being accidentally converted into a linked grove.
+func TestGroveRegisterPreservesProviderLocalPath(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	// Create a broker
+	broker := &store.RuntimeBroker{
+		ID:     "broker-preserve-path",
+		Name:   "Preserve Path Broker",
+		Slug:   "preserve-path-broker",
+		Status: store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
+
+	// Step 1: Register grove (creates it) — this is the initial hub-native creation.
+	// The broker is linked WITH a localPath (simulating CLI-initiated creation).
+	body := map[string]interface{}{
+		"name":      "preserve-path-grove",
+		"gitRemote": "github.com/test/preserve-path",
+		"brokerId":  broker.ID,
+		"path":      "/original/path/.scion",
+	}
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groves/register", body)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var resp RegisterGroveResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	require.True(t, resp.Created, "grove should be newly created")
+	groveID := resp.Grove.ID
+
+	// Verify provider has localPath from initial registration
+	provider, err := s.GetGroveProvider(ctx, groveID, broker.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "/original/path/.scion", provider.LocalPath,
+		"newly created grove should have localPath from registration")
+
+	// Now simulate converting to hub-native: clear localPath directly
+	// (as autoLinkProviders would do, or via admin action)
+	require.NoError(t, s.AddGroveProvider(ctx, &store.GroveProvider{
+		GroveID:    groveID,
+		BrokerID:   broker.ID,
+		BrokerName: broker.Name,
+		Status:     store.BrokerStatusOnline,
+		LinkedBy:   "auto-provide",
+		// LocalPath intentionally empty — hub-native provider
+	}))
+
+	// Verify localPath is now empty
+	provider, err = s.GetGroveProvider(ctx, groveID, broker.ID)
+	require.NoError(t, err)
+	assert.Empty(t, provider.LocalPath, "provider should have no localPath after reset")
+
+	// Step 2: Re-register from local checkout (CLI hubsync). This should NOT
+	// overwrite the empty localPath with the new path.
+	body2 := map[string]interface{}{
+		"name":      "preserve-path-grove",
+		"gitRemote": "github.com/test/preserve-path",
+		"brokerId":  broker.ID,
+		"path":      "/new/local/checkout/.scion",
+	}
+	rec2 := doRequest(t, srv, http.MethodPost, "/api/v1/groves/register", body2)
+	require.Equal(t, http.StatusOK, rec2.Code, "body: %s", rec2.Body.String())
+
+	var resp2 RegisterGroveResponse
+	require.NoError(t, json.NewDecoder(rec2.Body).Decode(&resp2))
+	assert.False(t, resp2.Created, "grove should already exist")
+
+	// Verify the provider's localPath was preserved (still empty)
+	provider, err = s.GetGroveProvider(ctx, groveID, broker.ID)
+	require.NoError(t, err)
+	assert.Empty(t, provider.LocalPath,
+		"re-registration should not overwrite existing provider's empty localPath")
+}
+
 // TestGroveSyncTemplates_CreatesAgent verifies that POST /api/v1/groves/{id}/sync-templates
 // creates a template-sync agent with the right configuration.
 func TestGroveSyncTemplates_CreatesAgent(t *testing.T) {

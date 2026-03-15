@@ -2559,12 +2559,20 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		broker = existingBroker
 
-		// Add as grove provider
+		// Add as grove provider. When the grove already existed and the
+		// broker is already a provider, preserve the existing localPath to
+		// avoid converting a hub-native git grove into a linked grove.
+		localPath := req.Path
+		if !created {
+			if existingProvider, err := s.store.GetGroveProvider(ctx, grove.ID, broker.ID); err == nil {
+				localPath = existingProvider.LocalPath
+			}
+		}
 		provider := &store.GroveProvider{
 			GroveID:    grove.ID,
 			BrokerID:   broker.ID,
 			BrokerName: broker.Name,
-			LocalPath:  req.Path,
+			LocalPath:  localPath,
 			Status:     broker.Status,
 		}
 
@@ -2647,12 +2655,20 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Add as grove provider
+		// Add as grove provider. When the grove already existed and the
+		// broker is already a provider, preserve the existing localPath to
+		// avoid converting a hub-native git grove into a linked grove.
+		localPath := req.Path
+		if !created {
+			if existingProvider, err := s.store.GetGroveProvider(ctx, grove.ID, broker.ID); err == nil {
+				localPath = existingProvider.LocalPath
+			}
+		}
 		provider := &store.GroveProvider{
 			GroveID:    grove.ID,
 			BrokerID:   broker.ID,
 			BrokerName: broker.Name,
-			LocalPath:  req.Path, // Filesystem path to the grove on this broker
+			LocalPath:  localPath,
 			Status:     store.BrokerStatusOnline,
 		}
 
