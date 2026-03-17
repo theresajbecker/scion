@@ -402,6 +402,12 @@ type Server struct {
 	// GCP token generator for agent identity (nil = GCP identity disabled)
 	gcpTokenGenerator GCPTokenGenerator
 
+	// GCP token rate limiter (nil = no rate limiting)
+	gcpTokenRateLimiter *GCPTokenRateLimiter
+
+	// GCP token metrics tracker (nil = disabled)
+	gcpTokenMetrics *GCPTokenMetrics
+
 	// Message broker proxy for pub/sub message routing (nil = disabled)
 	messageBrokerProxy *MessageBrokerProxy
 
@@ -450,6 +456,9 @@ func New(cfg ServerConfig, s store.Store) *Server {
 
 	// Initialize user activity tracker (throttled to once per hour per user)
 	srv.userActivity = NewUserActivityTracker(s, time.Hour)
+
+	// Initialize GCP token metrics
+	srv.gcpTokenMetrics = NewGCPTokenMetrics()
 
 	ctx := context.Background()
 
@@ -582,6 +591,9 @@ func New(cfg ServerConfig, s store.Store) *Server {
 			slog.Info("Cloud Logging query service initialized", "project", projectID)
 		}
 	}
+
+	// Initialize GCP token rate limiter (1 req/sec average, burst of 10)
+	srv.gcpTokenRateLimiter = NewGCPTokenRateLimiter(1, 10)
 
 	srv.registerRoutes()
 

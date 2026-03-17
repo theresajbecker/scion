@@ -238,9 +238,20 @@ func (s *Server) handleAgentGCPToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
+
 	agent := GetAgentFromContext(r.Context())
 	if agent == nil {
 		writeError(w, http.StatusForbidden, ErrCodeForbidden, "agent authentication required", nil)
+		return
+	}
+
+	// Rate limit check
+	if s.gcpTokenRateLimiter != nil && !s.gcpTokenRateLimiter.Allow(agent.Subject) {
+		if s.gcpTokenMetrics != nil {
+			s.gcpTokenMetrics.RecordRateLimitRejection()
+		}
+		writeError(w, http.StatusTooManyRequests, ErrCodeRateLimited, "rate limit exceeded for GCP token requests", nil)
 		return
 	}
 
@@ -284,11 +295,21 @@ func (s *Server) handleAgentGCPToken(w http.ResponseWriter, r *http.Request) {
 
 	token, err := s.gcpTokenGenerator.GenerateAccessToken(r.Context(), gcpID.ServiceAccountEmail, scopes)
 	if err != nil {
+		if s.gcpTokenMetrics != nil {
+			s.gcpTokenMetrics.RecordAccessTokenRequest(false, time.Since(start))
+		}
+		LogGCPTokenGeneration(r.Context(), s.auditLogger, GCPTokenEventAccessToken,
+			agent.Subject, agentRecord.GroveID, gcpID.ServiceAccountEmail, gcpID.ServiceAccountID, false, err.Error())
 		writeError(w, http.StatusBadGateway, "gcp_token_failed",
 			"token generation failed: "+err.Error(), nil)
 		return
 	}
 
+	if s.gcpTokenMetrics != nil {
+		s.gcpTokenMetrics.RecordAccessTokenRequest(true, time.Since(start))
+	}
+	LogGCPTokenGeneration(r.Context(), s.auditLogger, GCPTokenEventAccessToken,
+		agent.Subject, agentRecord.GroveID, gcpID.ServiceAccountEmail, gcpID.ServiceAccountID, true, "")
 	writeJSON(w, http.StatusOK, token)
 }
 
@@ -300,9 +321,20 @@ func (s *Server) handleAgentGCPIdentityToken(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	start := time.Now()
+
 	agent := GetAgentFromContext(r.Context())
 	if agent == nil {
 		writeError(w, http.StatusForbidden, ErrCodeForbidden, "agent authentication required", nil)
+		return
+	}
+
+	// Rate limit check
+	if s.gcpTokenRateLimiter != nil && !s.gcpTokenRateLimiter.Allow(agent.Subject) {
+		if s.gcpTokenMetrics != nil {
+			s.gcpTokenMetrics.RecordRateLimitRejection()
+		}
+		writeError(w, http.StatusTooManyRequests, ErrCodeRateLimited, "rate limit exceeded for GCP token requests", nil)
 		return
 	}
 
@@ -343,11 +375,21 @@ func (s *Server) handleAgentGCPIdentityToken(w http.ResponseWriter, r *http.Requ
 
 	token, err := s.gcpTokenGenerator.GenerateIDToken(r.Context(), gcpID.ServiceAccountEmail, req.Audience)
 	if err != nil {
+		if s.gcpTokenMetrics != nil {
+			s.gcpTokenMetrics.RecordIDTokenRequest(false, time.Since(start))
+		}
+		LogGCPTokenGeneration(r.Context(), s.auditLogger, GCPTokenEventIdentityToken,
+			agent.Subject, agentRecord.GroveID, gcpID.ServiceAccountEmail, gcpID.ServiceAccountID, false, err.Error())
 		writeError(w, http.StatusBadGateway, "gcp_token_failed",
 			"identity token generation failed: "+err.Error(), nil)
 		return
 	}
 
+	if s.gcpTokenMetrics != nil {
+		s.gcpTokenMetrics.RecordIDTokenRequest(true, time.Since(start))
+	}
+	LogGCPTokenGeneration(r.Context(), s.auditLogger, GCPTokenEventIdentityToken,
+		agent.Subject, agentRecord.GroveID, gcpID.ServiceAccountEmail, gcpID.ServiceAccountID, true, "")
 	writeJSON(w, http.StatusOK, token)
 }
 
