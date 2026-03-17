@@ -550,6 +550,12 @@ func New(cfg ServerConfig, s store.Store) *Server {
 	// Seed default policies and groups (idempotent)
 	seedDefaultPoliciesAndGroups(ctx, s)
 
+	// Seed the dev user when dev-auth is enabled so that Ent FK constraints
+	// on owner_id are satisfied when the dev user creates groves/groups.
+	if cfg.DevAuthToken != "" {
+		seedDevUser(ctx, s)
+	}
+
 	// Build unified auth configuration
 	srv.authConfig = AuthConfig{
 		Mode:           "production",

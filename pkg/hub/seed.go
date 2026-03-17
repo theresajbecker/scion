@@ -101,6 +101,30 @@ func seedPolicy(ctx context.Context, s store.Store, groupID string, policy *stor
 	}
 }
 
+// seedDevUser ensures the development pseudo-user exists in the store.
+// This is needed because Ent enforces foreign key constraints on owner_id,
+// and the dev user must exist as a User record for grove group creation to
+// succeed in workstation/dev-auth mode.
+func seedDevUser(ctx context.Context, s store.Store) {
+	_, err := s.GetUser(ctx, DevUserID)
+	if err == nil {
+		return // already exists
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		slog.Warn("failed to check for dev user", "error", err)
+		return
+	}
+	if err := s.CreateUser(ctx, &store.User{
+		ID:          DevUserID,
+		Email:       "dev@localhost",
+		DisplayName: "Development User",
+		Role:        "admin",
+		Status:      "active",
+	}); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
+		slog.Warn("failed to seed dev user", "error", err)
+	}
+}
+
 // ensureHubMembership adds the given user to the hub-members group.
 // This is best-effort; errors are logged at debug level and ignored.
 func ensureHubMembership(ctx context.Context, s store.Store, userID string) {
