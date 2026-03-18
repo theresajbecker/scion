@@ -109,6 +109,7 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 					if claims, err := cfg.AgentTokenSvc.ValidateAgentToken(token); err == nil {
 						ctx = context.WithValue(ctx, agentContextKey{}, claims)
 						ctx = contextWithIdentity(ctx, &agentIdentityWrapper{claims})
+						ctx = contextWithAuthType(ctx, AuthTypeAgent)
 						if cfg.Debug {
 							log.Debug("Agent authenticated", "subject", claims.Subject)
 						}
@@ -130,6 +131,7 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				if cfg.Debug {
 					log.Debug("Broker auth headers present, deferring to BrokerAuthMiddleware", "brokerID", brokerID)
 				}
+				ctx = contextWithAuthType(ctx, AuthTypeBroker)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -142,6 +144,7 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 					if user := extractProxyUser(r); user != nil {
 						ctx = context.WithValue(ctx, userContextKey{}, user)
 						ctx = contextWithIdentity(ctx, user)
+						ctx = contextWithAuthType(ctx, AuthTypeProxy)
 						if cfg.Debug {
 							log.Debug("Proxy user authenticated", "email", user.Email())
 						}
@@ -171,6 +174,7 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				devUser := &DevUser{id: DevUserID}
 				ctx = context.WithValue(ctx, userContextKey{}, devUser)
 				ctx = contextWithIdentity(ctx, devUser)
+				ctx = contextWithAuthType(ctx, AuthTypeDevToken)
 				if cfg.Debug {
 					log.Debug("Dev user authenticated")
 				}
@@ -189,6 +193,7 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				}
 				ctx = context.WithValue(ctx, userContextKey{}, scopedUser)
 				ctx = contextWithIdentity(ctx, scopedUser)
+				ctx = contextWithAuthType(ctx, AuthTypeUAT)
 				if cfg.Debug {
 					log.Debug("UAT authenticated", "email", scopedUser.Email(), "grove", scopedUser.ScopedGroveID())
 				}
@@ -200,6 +205,7 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 						devUser := &DevUser{id: DevUserID}
 						ctx = context.WithValue(ctx, userContextKey{}, devUser)
 						ctx = contextWithIdentity(ctx, devUser)
+						ctx = contextWithAuthType(ctx, AuthTypeDevToken)
 						if cfg.Debug {
 							log.Debug("Dev user authenticated (fallback)")
 						}
@@ -225,6 +231,7 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				)
 				ctx = context.WithValue(ctx, userContextKey{}, user)
 				ctx = contextWithIdentity(ctx, user)
+				ctx = contextWithAuthType(ctx, AuthTypeJWT)
 				if cfg.Debug {
 					log.Debug("User authenticated", "email", user.Email())
 				}

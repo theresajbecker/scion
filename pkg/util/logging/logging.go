@@ -30,6 +30,7 @@ const (
 	AttrBrokerID   = "broker_id"
 	AttrRequestID  = "request_id"
 	AttrUserID     = "user_id"
+	AttrAuthType   = "auth_type"
 )
 
 // Setup initializes the global logger.

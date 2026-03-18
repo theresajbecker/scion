@@ -17,6 +17,8 @@ package hub
 
 import (
 	"context"
+
+	"github.com/GoogleCloudPlatform/scion/pkg/util/logging"
 )
 
 // Identity represents an authenticated identity (user or agent).
@@ -175,4 +177,19 @@ func GetAgentIdentityFromContext(ctx context.Context) AgentIdentity {
 // contextWithIdentity returns a new context with the identity set.
 func contextWithIdentity(ctx context.Context, identity Identity) context.Context {
 	return context.WithValue(ctx, identityContextKey{}, identity)
+}
+
+// AuthType constants for request logging.
+const (
+	AuthTypeJWT      = "jwt"
+	AuthTypeUAT      = "uat"
+	AuthTypeDevToken = "dev-token"
+	AuthTypeAgent    = "agent"
+	AuthTypeBroker   = "broker"
+	AuthTypeProxy    = "proxy"
+)
+
+// contextWithAuthType returns a new context with the auth type set.
+func contextWithAuthType(ctx context.Context, authType string) context.Context {
+	return context.WithValue(ctx, logging.AuthTypeKey{}, authType)
 }

@@ -114,6 +114,11 @@ func (w *InstrumentedResponseWriter) Unwrap() http.ResponseWriter {
 // Context key for RequestMeta.
 type requestMetaKey struct{}
 
+// AuthTypeKey is the context key for the authentication method.
+// Defined here so both the auth middleware and request logger can use it
+// without circular imports.
+type AuthTypeKey struct{}
+
 // ContextWithRequestMeta stores RequestMeta in the context.
 func ContextWithRequestMeta(ctx context.Context, meta *RequestMeta) context.Context {
 	return context.WithValue(ctx, requestMetaKey{}, meta)
@@ -151,6 +156,7 @@ func SetRequestBrokerID(ctx context.Context, brokerID string) {
 		meta.mu.Unlock()
 	}
 }
+
 
 // RequestLoggerConfig configures the dedicated request logger.
 type RequestLoggerConfig struct {
@@ -294,6 +300,9 @@ func RequestLogMiddleware(logger *slog.Logger, component string, patterns []Path
 			ctx := ContextWithRequestMeta(r.Context(), meta)
 			r = r.WithContext(ctx)
 
+			// Read auth type from context (set by auth middleware before this point)
+			authType, _ := r.Context().Value(AuthTypeKey{}).(string)
+
 			// Wrap response writer
 			wrapped := &InstrumentedResponseWriter{
 				ResponseWriter: w,
@@ -308,6 +317,8 @@ func RequestLogMiddleware(logger *slog.Logger, component string, patterns []Path
 			finalAgentID := meta.AgentID
 			finalBrokerID := meta.BrokerID
 			meta.mu.Unlock()
+
+			finalAuthType := authType
 
 			duration := time.Since(start)
 
@@ -361,6 +372,7 @@ func RequestLogMiddleware(logger *slog.Logger, component string, patterns []Path
 				slog.String(AttrGroveID, finalGroveID),
 				slog.String(AttrAgentID, finalAgentID),
 				slog.String(AttrBrokerID, finalBrokerID),
+				slog.String(AttrAuthType, finalAuthType),
 				slog.String(AttrRequestID, requestID),
 			}
 
