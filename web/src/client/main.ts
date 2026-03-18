@@ -126,6 +126,7 @@ const ROUTES: RouteConfig[] = [
   { pattern: /^\/profile$/, tag: 'scion-page-profile-env-vars', load: () => import('../components/pages/profile-env-vars.js') },
   { pattern: /^\/groves\/new$/, tag: 'scion-page-grove-create', load: () => import('../components/pages/grove-create.js') },
   { pattern: /^\/groves\/[^/]+\/settings$/, tag: 'scion-page-grove-settings', load: () => import('../components/pages/grove-settings.js') },
+  { pattern: /^\/groves\/[^/]+\/schedules$/, tag: 'scion-page-grove-schedules', load: () => import('../components/pages/grove-schedules.js') },
   { pattern: /^\/groves\/[^/]+$/, tag: 'scion-page-grove-detail', load: () => import('../components/pages/grove-detail.js') },
   { pattern: /^\/agents\/new$/, tag: 'scion-page-agent-create', load: () => import('../components/pages/agent-create.js') },
   { pattern: /^\/agents\/[^/]+\/configure$/, tag: 'scion-page-agent-configure', load: () => import('../components/pages/agent-configure.js') },

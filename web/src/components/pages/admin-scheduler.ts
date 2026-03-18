@@ -51,10 +51,26 @@ interface ScheduledEvent {
   error?: string;
 }
 
+interface RecurringSchedule {
+  id: string;
+  groveId: string;
+  name: string;
+  cronExpr: string;
+  eventType: string;
+  status: string;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  lastRunStatus?: string;
+  lastRunError?: string;
+  runCount: number;
+  errorCount: number;
+}
+
 interface SchedulerResponse {
   status?: string;
   scheduler?: SchedulerInfo;
   scheduledEvents?: ScheduledEvent[] | null;
+  recurringSchedules?: RecurringSchedule[] | null;
   serverTime?: string;
 }
 
@@ -71,6 +87,9 @@ export class ScionPageAdminScheduler extends LitElement {
 
   @state()
   private cancellingId: string | null = null;
+
+  @state()
+  private allSchedules: RecurringSchedule[] = [];
 
   static override styles = css`
     :host {
@@ -230,6 +249,16 @@ export class ScionPageAdminScheduler extends LitElement {
       color: var(--sl-color-primary-700, #1d4ed8);
     }
 
+    .status-badge.active {
+      background: var(--sl-color-success-100, #dcfce7);
+      color: var(--sl-color-success-700, #15803d);
+    }
+
+    .status-badge.paused {
+      background: var(--sl-color-warning-100, #fef3c7);
+      color: var(--sl-color-warning-700, #a16207);
+    }
+
     .type-badge {
       display: inline-flex;
       align-items: center;
@@ -356,7 +385,9 @@ export class ScionPageAdminScheduler extends LitElement {
         throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      this.data = (await response.json()) as SchedulerResponse;
+      const data = (await response.json()) as SchedulerResponse;
+      this.data = data;
+      this.allSchedules = data.recurringSchedules ?? [];
     } catch (err) {
       console.error('Failed to load scheduler status:', err);
       this.error = err instanceof Error ? err.message : 'Failed to load scheduler status';
@@ -505,6 +536,7 @@ export class ScionPageAdminScheduler extends LitElement {
       ${this.renderOverview(scheduler)}
       ${this.renderRecurringHandlers(scheduler.recurringHandlers)}
       ${this.renderEventHandlers(scheduler.eventHandlers)}
+      ${this.renderRecurringSchedules()}
       ${this.renderScheduledEvents(events)}
     `;
   }
@@ -617,6 +649,80 @@ export class ScionPageAdminScheduler extends LitElement {
                   </thead>
                   <tbody>
                     ${events.map((evt) => this.renderEventRow(evt))}
+                  </tbody>
+                </table>
+              </div>
+            `}
+      </div>
+    `;
+  }
+
+  private renderRecurringSchedules() {
+    return html`
+      <div class="section">
+        <h2 class="section-title">Recurring Schedules</h2>
+        <p class="section-description">User-defined recurring schedules across all groves.</p>
+        ${this.allSchedules.length === 0
+          ? html`<div class="empty-inline">No recurring schedules.</div>`
+          : html`
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Cron</th>
+                      <th>Status</th>
+                      <th>Next Run</th>
+                      <th class="hide-mobile">Grove</th>
+                      <th class="hide-mobile">Runs</th>
+                      <th class="hide-mobile">Last Run</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${this.allSchedules.map(
+                      (sched) => html`
+                        <tr>
+                          <td><strong>${sched.name}</strong></td>
+                          <td><span class="type-badge">${sched.eventType}</span></td>
+                          <td><span class="mono">${sched.cronExpr}</span></td>
+                          <td><span class="status-badge ${sched.status}">${sched.status}</span></td>
+                          <td>
+                            <span class="meta-text">
+                              ${sched.status === 'active' && sched.nextRunAt
+                                ? this.formatFutureTime(sched.nextRunAt)
+                                : '-'}
+                            </span>
+                          </td>
+                          <td class="hide-mobile">
+                            <span class="mono">
+                              ${sched.groveId.length > 12
+                                ? sched.groveId.slice(0, 12) + '...'
+                                : sched.groveId}
+                            </span>
+                          </td>
+                          <td class="hide-mobile">
+                            <span class="meta-text">
+                              ${sched.runCount}${sched.errorCount > 0
+                                ? ` (${sched.errorCount} err)`
+                                : ''}
+                            </span>
+                          </td>
+                          <td class="hide-mobile">
+                            ${sched.lastRunAt
+                              ? html`
+                                  <span class="meta-text">
+                                    ${this.formatRelativeTime(sched.lastRunAt)}
+                                    ${sched.lastRunStatus === 'error'
+                                      ? html`<span class="error-text" title=${sched.lastRunError || ''}> (error)</span>`
+                                      : ''}
+                                  </span>
+                                `
+                              : html`<span class="meta-text">-</span>`}
+                          </td>
+                        </tr>
+                      `
+                    )}
                   </tbody>
                 </table>
               </div>

@@ -27,7 +27,7 @@ import (
 
 // CreateScheduledEventRequest is the API request for creating a scheduled event.
 type CreateScheduledEventRequest struct {
-	EventType string `json:"eventType"`           // Required: "message"
+	EventType string `json:"eventType"`           // Required: "message" or "dispatch_agent"
 	FireAt    string `json:"fireAt,omitempty"`     // ISO 8601 absolute time
 	FireIn    string `json:"fireIn,omitempty"`     // Duration string (e.g. "30m")
 	Payload   string `json:"payload,omitempty"`    // Raw JSON payload (advanced)
@@ -38,6 +38,11 @@ type CreateScheduledEventRequest struct {
 	Message   string `json:"message,omitempty"`
 	Interrupt bool   `json:"interrupt,omitempty"`
 	Plain     bool   `json:"plain,omitempty"`
+
+	// Convenience fields for "dispatch_agent" events — used to auto-construct Payload
+	Template string `json:"template,omitempty"`
+	Task     string `json:"task,omitempty"`
+	Branch   string `json:"branch,omitempty"`
 }
 
 // ScheduledEventResponse is the API response for a single scheduled event.
@@ -108,8 +113,8 @@ func (s *Server) createScheduledEvent(w http.ResponseWriter, r *http.Request, gr
 		ValidationError(w, "eventType is required", nil)
 		return
 	}
-	if req.EventType != "message" {
-		ValidationError(w, fmt.Sprintf("unsupported event type: %s", req.EventType), nil)
+	if req.EventType != "message" && req.EventType != "dispatch_agent" {
+		ValidationError(w, fmt.Sprintf("unsupported event type: %s (supported: message, dispatch_agent)", req.EventType), nil)
 		return
 	}
 
@@ -150,6 +155,24 @@ func (s *Server) createScheduledEvent(w http.ResponseWriter, r *http.Request, gr
 
 	// Build payload
 	payload := req.Payload
+	if payload == "" && req.EventType == "dispatch_agent" {
+		if req.AgentName == "" {
+			ValidationError(w, "agentName is required for dispatch_agent events", nil)
+			return
+		}
+		p := DispatchAgentEventPayload{
+			AgentName: req.AgentName,
+			Template:  req.Template,
+			Task:      req.Task,
+			Branch:    req.Branch,
+		}
+		payloadBytes, err := json.Marshal(p)
+		if err != nil {
+			InternalError(w)
+			return
+		}
+		payload = string(payloadBytes)
+	}
 	if payload == "" && req.EventType == "message" {
 		// Auto-construct payload from convenience fields
 		if req.Message == "" {

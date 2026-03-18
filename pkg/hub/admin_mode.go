@@ -254,10 +254,20 @@ func (s *Server) handleAdminScheduler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fetch recurring schedules across all groves.
+	var schedules []store.Schedule
+	if s.store != nil {
+		result, err := s.store.ListSchedules(r.Context(), store.ScheduleFilter{}, store.ListOptions{Limit: 100})
+		if err == nil && result != nil {
+			schedules = result.Items
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"scheduler":       status,
-		"scheduledEvents": events,
-		"serverTime":      time.Now().UTC(),
+		"scheduler":          status,
+		"scheduledEvents":    events,
+		"recurringSchedules": schedules,
+		"serverTime":         time.Now().UTC(),
 	})
 }
 

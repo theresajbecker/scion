@@ -33,6 +33,7 @@ import '../shared/status-badge.js';
 import '../shared/view-toggle.js';
 import '../shared/scheduled-event-list.js';
 import '../shared/subscription-manager.js';
+import '../shared/schedule-list.js';
 
 @customElement('scion-page-grove-detail')
 export class ScionPageGroveDetail extends LitElement {
@@ -1168,6 +1169,11 @@ export class ScionPageGroveDetail extends LitElement {
             ></scion-subscription-manager>
           `
         : nothing}
+
+      <scion-schedule-list
+        .groveId=${this.grove.id}
+        compact
+      ></scion-schedule-list>
 
       <div class="section-header">
         <h2>Agents</h2>

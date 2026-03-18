@@ -58,6 +58,9 @@ type CreateScheduledEventRequest struct {
 	Message   string `json:"message,omitempty"`
 	Interrupt bool   `json:"interrupt,omitempty"`
 	Plain     bool   `json:"plain,omitempty"`
+	Template  string `json:"template,omitempty"`
+	Task      string `json:"task,omitempty"`
+	Branch    string `json:"branch,omitempty"`
 }
 
 // ScheduledEvent represents a scheduled event returned by the Hub API.

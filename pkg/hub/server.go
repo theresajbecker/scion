@@ -1185,6 +1185,138 @@ func (s *Server) messageEventHandler() EventHandler {
 	}
 }
 
+// DispatchAgentEventPayload is the JSON payload for "dispatch_agent" type scheduled events.
+type DispatchAgentEventPayload struct {
+	AgentName  string `json:"agentName"`
+	Template   string `json:"template,omitempty"`
+	Task       string `json:"task,omitempty"`
+	Branch     string `json:"branch,omitempty"`
+}
+
+// dispatchAgentEventHandler returns an EventHandler that creates and starts
+// an agent in the grove via the AgentDispatcher.
+func (s *Server) dispatchAgentEventHandler() EventHandler {
+	return func(ctx context.Context, evt store.ScheduledEvent) error {
+		var payload DispatchAgentEventPayload
+		if err := json.Unmarshal([]byte(evt.Payload), &payload); err != nil {
+			return fmt.Errorf("invalid dispatch_agent payload: %w", err)
+		}
+
+		if payload.AgentName == "" {
+			return fmt.Errorf("dispatch_agent payload: agentName is required")
+		}
+
+		// Log staleness for late fires
+		staleness := time.Since(evt.FireAt)
+		if !evt.FireAt.IsZero() && staleness > 1*time.Minute {
+			slog.Warn("Scheduler: firing stale dispatch_agent event",
+				"eventID", evt.ID,
+				"agentName", payload.AgentName,
+				"scheduledFor", evt.FireAt.Format(time.RFC3339),
+				"staleness", staleness.Truncate(time.Second).String())
+		}
+
+		// Validate agent name
+		slug, err := api.ValidateAgentName(payload.AgentName)
+		if err != nil {
+			return fmt.Errorf("invalid agent name %q: %w", payload.AgentName, err)
+		}
+
+		// Verify grove exists
+		grove, err := s.store.GetGrove(ctx, evt.GroveID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("grove %q no longer exists", evt.GroveID)
+			}
+			return fmt.Errorf("failed to resolve grove %q: %w", evt.GroveID, err)
+		}
+
+		// Resolve the runtime broker for this grove
+		runtimeBrokerID := ""
+		providers, provErr := s.store.GetGroveProviders(ctx, evt.GroveID)
+		if provErr == nil && len(providers) > 0 {
+			runtimeBrokerID = providers[0].BrokerID
+		}
+
+		// Check if an agent with this name already exists
+		existingAgent, err := s.store.GetAgentBySlug(ctx, evt.GroveID, slug)
+		if err == nil && existingAgent != nil {
+			slog.Warn("Scheduler: agent already exists, skipping dispatch_agent",
+				"eventID", evt.ID,
+				"agentName", slug,
+				"groveID", evt.GroveID,
+				"existingPhase", existingAgent.Phase)
+			return fmt.Errorf("agent %q already exists in grove", slug)
+		}
+
+		// Create the agent record
+		agent := &store.Agent{
+			ID:              api.NewUUID(),
+			Slug:            slug,
+			Name:            slug,
+			Template:        payload.Template,
+			GroveID:         evt.GroveID,
+			RuntimeBrokerID: runtimeBrokerID,
+			Phase:           "created",
+			Detached:        true,
+			CreatedBy:       evt.CreatedBy,
+		}
+
+		// Build applied config with task
+		agent.AppliedConfig = &store.AgentAppliedConfig{}
+		if payload.Task != "" {
+			agent.AppliedConfig.Task = payload.Task
+		}
+		if payload.Branch != "" {
+			agent.AppliedConfig.Branch = payload.Branch
+		}
+
+		// Resolve template if specified
+		if payload.Template != "" {
+			tmpl, tmplErr := s.resolveTemplate(ctx, payload.Template, evt.GroveID)
+			if tmplErr == nil && tmpl != nil {
+				if tmpl.Slug != "" {
+					agent.Template = tmpl.Slug
+				}
+				harnessConfig := s.getHarnessConfigFromTemplate(tmpl, "")
+				if harnessConfig != "" {
+					agent.AppliedConfig.HarnessConfig = harnessConfig
+				}
+			}
+		}
+
+		s.populateAgentConfig(agent, grove, nil)
+
+		if err := s.store.CreateAgent(ctx, agent); err != nil {
+			return fmt.Errorf("failed to create agent %q: %w", slug, err)
+		}
+
+		// Dispatch to runtime broker
+		dispatcher := s.GetDispatcher()
+		if dispatcher == nil {
+			slog.Warn("Scheduler: no dispatcher available, agent created but not started",
+				"eventID", evt.ID,
+				"agentID", agent.ID,
+				"agentName", agent.Name)
+			return nil
+		}
+
+		if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
+			slog.Error("Scheduler: failed to dispatch agent creation",
+				"eventID", evt.ID,
+				"agentID", agent.ID,
+				"agentName", agent.Name,
+				"error", err)
+			return fmt.Errorf("failed to dispatch agent %q: %w", slug, err)
+		}
+
+		slog.Info("Scheduler: agent dispatched successfully",
+			"eventID", evt.ID, "agentID", agent.ID, "agentName", agent.Name,
+			"groveID", evt.GroveID)
+		return nil
+	}
+}
+
 // evaluateSchedulesHandler returns a recurring handler that evaluates due
 // recurring schedules and fires their events. It queries active schedules
 // whose next_run_at has passed, executes the action, and updates next_run_at.
@@ -1293,6 +1425,7 @@ func (s *Server) StartBackgroundServices(ctx context.Context) {
 		s.scheduler.RegisterRecurring("soft-delete-purge", 60, s.purgeHandler())
 	}
 	s.scheduler.RegisterEventHandler("message", s.messageEventHandler())
+	s.scheduler.RegisterEventHandler("dispatch_agent", s.dispatchAgentEventHandler())
 	s.scheduler.RegisterRecurring("schedule-evaluator", 1, s.evaluateSchedulesHandler())
 	s.scheduler.Start(ctx)
 

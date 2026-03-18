@@ -69,6 +69,9 @@ type CreateScheduleRequest struct {
 	AgentName string `json:"agentName,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Interrupt bool   `json:"interrupt,omitempty"`
+	Template  string `json:"template,omitempty"`
+	Task      string `json:"task,omitempty"`
+	Branch    string `json:"branch,omitempty"`
 }
 
 // UpdateScheduleRequest is the client-side request for updating a schedule.

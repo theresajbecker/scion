@@ -38,6 +38,11 @@ type CreateScheduleRequest struct {
 	AgentName string `json:"agentName,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Interrupt bool   `json:"interrupt,omitempty"`
+
+	// Convenience fields for "dispatch_agent" events — used to auto-construct Payload
+	Template string `json:"template,omitempty"`
+	Task     string `json:"task,omitempty"`
+	Branch   string `json:"branch,omitempty"`
 }
 
 // UpdateScheduleRequest is the API request for updating a recurring schedule.
@@ -152,8 +157,8 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, groveID 
 		ValidationError(w, "eventType is required", nil)
 		return
 	}
-	if req.EventType != "message" {
-		ValidationError(w, fmt.Sprintf("unsupported event type: %s", req.EventType), nil)
+	if req.EventType != "message" && req.EventType != "dispatch_agent" {
+		ValidationError(w, fmt.Sprintf("unsupported event type: %s (supported: message, dispatch_agent)", req.EventType), nil)
 		return
 	}
 
@@ -167,6 +172,24 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, groveID 
 
 	// Build payload
 	payload := req.Payload
+	if payload == "" && req.EventType == "dispatch_agent" {
+		if req.AgentName == "" {
+			ValidationError(w, "agentName is required for dispatch_agent schedules", nil)
+			return
+		}
+		p := DispatchAgentEventPayload{
+			AgentName: req.AgentName,
+			Template:  req.Template,
+			Task:      req.Task,
+			Branch:    req.Branch,
+		}
+		payloadBytes, marshalErr := json.Marshal(p)
+		if marshalErr != nil {
+			InternalError(w)
+			return
+		}
+		payload = string(payloadBytes)
+	}
 	if payload == "" && req.EventType == "message" {
 		if req.Message == "" {
 			ValidationError(w, "message is required for message schedules (or provide raw payload)", nil)

@@ -38,6 +38,9 @@ var (
 	scheduleName      string
 	scheduleCron      string
 	scheduleListType  string // "events", "recurring", "all"
+	scheduleTemplate  string
+	scheduleTask      string
+	scheduleBranch    string
 )
 
 // scheduleCmd is the top-level command group for schedule management.
@@ -357,6 +360,15 @@ func printScheduleDetail(sched *hubclient.Schedule) {
 			if message, ok := payload["message"].(string); ok && message != "" {
 				fmt.Printf("  Message:    %q\n", message)
 			}
+			if template, ok := payload["template"].(string); ok && template != "" {
+				fmt.Printf("  Template:   %s\n", template)
+			}
+			if task, ok := payload["task"].(string); ok && task != "" {
+				fmt.Printf("  Task:       %q\n", task)
+			}
+			if branch, ok := payload["branch"].(string); ok && branch != "" {
+				fmt.Printf("  Branch:     %s\n", branch)
+			}
 		}
 	}
 }
@@ -415,8 +427,12 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		if scheduleMessage == "" {
 			return fmt.Errorf("--message is required for message events")
 		}
+	case "dispatch_agent":
+		if scheduleAgent == "" {
+			return fmt.Errorf("--agent is required for dispatch_agent events (the name of the agent to create)")
+		}
 	default:
-		return fmt.Errorf("unsupported event type: %q (supported: message)", scheduleType)
+		return fmt.Errorf("unsupported event type: %q (supported: message, dispatch_agent)", scheduleType)
 	}
 
 	hubCtx, err := CheckHubAvailabilityWithOptions(grovePath, true)
@@ -441,6 +457,9 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		AgentName: scheduleAgent,
 		Message:   scheduleMessage,
 		Interrupt: scheduleInterrupt,
+		Template:  scheduleTemplate,
+		Task:      scheduleTask,
+		Branch:    scheduleBranch,
 	}
 
 	if scheduleIn != "" {
@@ -488,8 +507,12 @@ func runScheduleCreateRecurring(cmd *cobra.Command, args []string) error {
 		if scheduleMessage == "" {
 			return fmt.Errorf("--message is required for message schedules")
 		}
+	case "dispatch_agent":
+		if scheduleAgent == "" {
+			return fmt.Errorf("--agent is required for dispatch_agent schedules (the name of the agent to create)")
+		}
 	default:
-		return fmt.Errorf("unsupported event type: %q (supported: message)", scheduleType)
+		return fmt.Errorf("unsupported event type: %q (supported: message, dispatch_agent)", scheduleType)
 	}
 
 	hubCtx, err := CheckHubAvailabilityWithOptions(grovePath, true)
@@ -516,6 +539,9 @@ func runScheduleCreateRecurring(cmd *cobra.Command, args []string) error {
 		AgentName: scheduleAgent,
 		Message:   scheduleMessage,
 		Interrupt: scheduleInterrupt,
+		Template:  scheduleTemplate,
+		Task:      scheduleTask,
+		Branch:    scheduleBranch,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -779,18 +805,24 @@ func init() {
 	scheduleListCmd.Flags().StringVar(&scheduleListType, "show", "", "Filter by resource type: events, recurring, or all (default: all)")
 
 	// Create one-shot flags
-	scheduleCreateCmd.Flags().StringVar(&scheduleType, "type", "", "Event type (required, e.g. message)")
+	scheduleCreateCmd.Flags().StringVar(&scheduleType, "type", "", "Event type (required: message, dispatch_agent)")
 	scheduleCreateCmd.Flags().StringVar(&scheduleIn, "in", "", "Schedule after a duration (e.g. 30m, 1h)")
 	scheduleCreateCmd.Flags().StringVar(&scheduleAt, "at", "", "Schedule at an absolute time (ISO 8601)")
-	scheduleCreateCmd.Flags().StringVar(&scheduleAgent, "agent", "", "Target agent name (for message events)")
+	scheduleCreateCmd.Flags().StringVar(&scheduleAgent, "agent", "", "Target agent name")
 	scheduleCreateCmd.Flags().StringVar(&scheduleMessage, "message", "", "Message body (for message events)")
 	scheduleCreateCmd.Flags().BoolVar(&scheduleInterrupt, "interrupt", false, "Interrupt the agent (for message events)")
+	scheduleCreateCmd.Flags().StringVar(&scheduleTemplate, "template", "", "Agent template (for dispatch_agent events)")
+	scheduleCreateCmd.Flags().StringVar(&scheduleTask, "task", "", "Task/prompt for the agent (for dispatch_agent events)")
+	scheduleCreateCmd.Flags().StringVar(&scheduleBranch, "branch", "", "Git branch name (for dispatch_agent events)")
 
 	// Create recurring flags
 	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleName, "name", "", "Schedule name (required)")
 	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleCron, "cron", "", "Cron expression (required, 5-field: minute hour day month weekday)")
-	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleType, "type", "", "Event type (required, e.g. message)")
-	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleAgent, "agent", "", "Target agent name (for message events, or 'all' for broadcast)")
+	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleType, "type", "", "Event type (required: message, dispatch_agent)")
+	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleAgent, "agent", "", "Target agent name (for message: name or 'all'; for dispatch_agent: name to create)")
 	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleMessage, "message", "", "Message body (for message events)")
 	scheduleCreateRecurringCmd.Flags().BoolVar(&scheduleInterrupt, "interrupt", false, "Interrupt the agent (for message events)")
+	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleTemplate, "template", "", "Agent template (for dispatch_agent events)")
+	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleTask, "task", "", "Task/prompt for the agent (for dispatch_agent events)")
+	scheduleCreateRecurringCmd.Flags().StringVar(&scheduleBranch, "branch", "", "Git branch name (for dispatch_agent events)")
 }
