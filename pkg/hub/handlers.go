@@ -2363,6 +2363,9 @@ func (s *Server) createGroveGroup(ctx context.Context, grove *store.Grove) {
 func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *store.Grove, callerUserID ...string) {
 	membersSlug := "grove:" + grove.Slug + ":members"
 
+	slog.Info("backfilling grove members group",
+		"grove", grove.ID, "slug", grove.Slug, "membersSlug", membersSlug)
+
 	// Create grove members group, or look up the existing one
 	membersGroup := &store.Group{
 		ID:        api.NewUUID(),
@@ -2377,6 +2380,8 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 			slog.Warn("failed to create grove members group", "grove", grove.ID, "error", err)
 			return
 		}
+		slog.Info("grove members group already exists, looking up",
+			"grove", grove.ID, "slug", membersSlug)
 		// Group already exists — look it up so we can still add the user
 		existing, lookupErr := s.store.GetGroupBySlug(ctx, membersSlug)
 		if lookupErr != nil {
@@ -2391,6 +2396,9 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 			slog.Warn("failed to update existing grove members group grove ID",
 				"grove", grove.ID, "slug", membersSlug, "error", updateErr)
 		}
+	} else {
+		slog.Info("created grove members group",
+			"grove", grove.ID, "group", membersGroup.ID, "slug", membersSlug)
 	}
 
 	// Add the creating user as an owner of the grove members group
@@ -2698,6 +2706,8 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 		if user := GetUserIdentityFromContext(ctx); user != nil {
 			callerID = user.ID()
 		}
+		slog.Info("backfilling groups for existing grove during register",
+			"grove", grove.ID, "slug", grove.Slug, "caller", callerID)
 		s.createGroveGroup(ctx, grove)
 		s.createGroveMembersGroupAndPolicy(ctx, grove, callerID)
 	}
