@@ -474,20 +474,20 @@ The design places commands under `scion notifications` (top-level). An alternati
 
 ## Implementation Phases
 
-### Phase 1: Core Subscription API + Dispatcher Changes
+### Phase 1: Core Subscription API + Dispatcher Changes ✅ COMPLETE
 **Goal**: Subscriptions are a first-class resource with CRUD API and grove-scoped matching with deduplication.
 
 **Tasks:**
-1. Add `scope` column to `NotificationSubscription` model and DB schema migration
-2. Make `agent_id` nullable in the schema (for grove-scoped subscriptions)
-3. Add `GetNotificationSubscriptionsByGroveScope()` and `GetSubscriptionsForSubscriber()` store methods
-4. Implement SQLite store methods
-5. Add unique constraint for duplicate prevention
-6. Update `NotificationDispatcher.handleEvent()` with grove-scope query and deduplication logic
-7. Add HTTP handlers: `POST/GET/DELETE /api/v1/notifications/subscriptions`
-8. Add hubclient `SubscriptionService` interface and implementation
-9. Write unit and integration tests
-10. Refactor `--notify` flag in `createAgent` handler to use the new subscription creation path
+1. ✅ Add `scope` column to `NotificationSubscription` model and DB schema migration
+2. ✅ Make `agent_id` nullable in the schema (for grove-scoped subscriptions)
+3. ✅ Add `GetNotificationSubscriptionsByGroveScope()` and `GetSubscriptionsForSubscriber()` store methods
+4. ✅ Implement SQLite store methods
+5. ✅ Add unique constraint for duplicate prevention
+6. ✅ Update `NotificationDispatcher.handleEvent()` with grove-scope query and deduplication logic
+7. ✅ Add HTTP handlers: `POST/GET/DELETE /api/v1/notifications/subscriptions`
+8. ✅ Add hubclient `SubscriptionService` interface and implementation
+9. ✅ Write unit and integration tests
+10. ✅ Refactor `--notify` flag in `createAgent` handler to use the new subscription creation path
 
 ### Phase 2: CLI Commands
 **Goal**: Users and agents can manage subscriptions from the command line.
