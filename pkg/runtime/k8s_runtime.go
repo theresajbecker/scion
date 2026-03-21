@@ -709,11 +709,11 @@ func (r *KubernetesRuntime) cleanupSharedDirPVCs(ctx context.Context, namespace,
 		LabelSelector: selector,
 	})
 	if err != nil {
-		runtimeLog.Warn("Failed to list shared dir PVCs for cleanup", "grove", groveName, "error", err)
+		runtimeLog.Warn("Failed to list shared dir PVCs for cleanup", "grove_id", groveName, "error", err)
 		return
 	}
 	for _, pvc := range pvcList.Items {
-		runtimeLog.Info("Deleting shared dir PVC", "pvc", pvc.Name, "grove", groveName)
+		runtimeLog.Info("Deleting shared dir PVC", "pvc", pvc.Name, "grove_id", groveName)
 		if err := r.Client.Clientset.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{}); err != nil {
 			runtimeLog.Warn("Failed to delete shared dir PVC", "pvc", pvc.Name, "error", err)
 		}

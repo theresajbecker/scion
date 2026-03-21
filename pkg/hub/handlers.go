@@ -718,7 +718,7 @@ func (s *Server) createAgentInGrove(
 				storagePath := storage.GroveWorkspaceStoragePath(grove.ID)
 				if err := gcp.SyncToGCS(ctx, agent.AppliedConfig.Workspace, stor.Bucket(), storagePath+"/files"); err != nil {
 					s.agentLifecycleLog.Warn("Failed to upload hub-native grove workspace to GCS",
-						"grove", grove.ID, "error", err)
+						"grove_id", grove.ID, "error", err)
 				} else {
 					// Swap workspace to storage path for remote broker
 					agent.AppliedConfig.Workspace = ""
@@ -2463,7 +2463,7 @@ func (s *Server) createGrove(w http.ResponseWriter, r *http.Request) {
 	if grove.GitRemote == "" {
 		if err := s.initHubNativeGrove(grove); err != nil {
 			slog.Warn("failed to initialize hub-native grove workspace",
-				"grove", grove.ID, "slug", grove.Slug, "error", err)
+				"grove_id", grove.ID, "slug", grove.Slug, "error", err)
 		}
 	}
 
@@ -2491,7 +2491,7 @@ func (s *Server) createGroveGroup(ctx context.Context, grove *store.Grove) {
 	}
 	if err := s.store.CreateGroup(ctx, groveGroup); err != nil {
 		if !errors.Is(err, store.ErrAlreadyExists) {
-			slog.Warn("failed to create grove group", "grove", grove.ID, "error", err)
+			slog.Warn("failed to create grove group", "grove_id", grove.ID, "error", err)
 			return
 		}
 		// Constraint conflict — look it up by slug
@@ -2510,7 +2510,7 @@ func (s *Server) createGroveGroup(ctx context.Context, grove *store.Grove) {
 			existing.GroveID = grove.ID
 			if updateErr := s.store.UpdateGroup(ctx, existing); updateErr != nil {
 				slog.Warn("failed to update existing grove agents group",
-					"grove", grove.ID, "slug", agentsSlug, "error", updateErr)
+					"grove_id", grove.ID, "slug", agentsSlug, "error", updateErr)
 			}
 		}
 	}
@@ -2533,28 +2533,28 @@ func (s *Server) findOrCreateGroupForGrove(ctx context.Context, grove *store.Gro
 		for _, g := range result.Items {
 			if g.GroupType == groupType {
 				slog.Info("found existing group by grove_id with matching type",
-					"grove", grove.ID, "group", g.ID, "slug", g.Slug, "type", groupType)
+					"grove_id", grove.ID, "group", g.ID, "slug", g.Slug, "type", groupType)
 				return &g
 			}
 		}
 		// No type match — update the slug of the first match
 		phantom := &result.Items[0]
 		slog.Info("repurposing phantom group found by grove_id",
-			"grove", grove.ID, "group", phantom.ID,
+			"grove_id", grove.ID, "group", phantom.ID,
 			"oldSlug", phantom.Slug, "newSlug", slug, "type", groupType)
 		phantom.Slug = slug
 		phantom.Name = name
 		phantom.GroupType = groupType
 		if updateErr := s.store.UpdateGroup(ctx, phantom); updateErr != nil {
 			slog.Warn("failed to repurpose phantom group",
-				"grove", grove.ID, "group", phantom.ID, "error", updateErr)
+				"grove_id", grove.ID, "group", phantom.ID, "error", updateErr)
 		}
 		return phantom
 	}
 
 	// No group found by grove_id — create without grove_id as fallback
 	slog.Warn("no phantom group found by grove_id — creating without grove_id",
-		"grove", grove.ID, "slug", slug)
+		"grove_id", grove.ID, "slug", slug)
 	newGroup := &store.Group{
 		ID:        api.NewUUID(),
 		Name:      name,
@@ -2564,11 +2564,11 @@ func (s *Server) findOrCreateGroupForGrove(ctx context.Context, grove *store.Gro
 	}
 	if createErr := s.store.CreateGroup(ctx, newGroup); createErr != nil {
 		slog.Warn("fallback group creation also failed",
-			"grove", grove.ID, "slug", slug, "error", createErr)
+			"grove_id", grove.ID, "slug", slug, "error", createErr)
 		return nil
 	}
 	slog.Info("created group without grove_id (unique constraint workaround)",
-		"grove", grove.ID, "group", newGroup.ID, "slug", slug)
+		"grove_id", grove.ID, "group", newGroup.ID, "slug", slug)
 	return newGroup
 }
 
@@ -2583,7 +2583,7 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 	membersSlug := "grove:" + grove.Slug + ":members"
 
 	slog.Info("backfilling grove members group",
-		"grove", grove.ID, "slug", grove.Slug, "membersSlug", membersSlug)
+		"grove_id", grove.ID, "slug", grove.Slug, "membersSlug", membersSlug)
 
 	// Create grove members group, or look up the existing one
 	membersGroup := &store.Group{
@@ -2596,11 +2596,11 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 	}
 	if err := s.store.CreateGroup(ctx, membersGroup); err != nil {
 		if !errors.Is(err, store.ErrAlreadyExists) {
-			slog.Warn("failed to create grove members group", "grove", grove.ID, "error", err)
+			slog.Warn("failed to create grove members group", "grove_id", grove.ID, "error", err)
 			return
 		}
 		slog.Info("grove members group constraint conflict, looking up by slug",
-			"grove", grove.ID, "slug", membersSlug)
+			"grove_id", grove.ID, "slug", membersSlug)
 		// Constraint conflict — look up by slug first
 		existing, lookupErr := s.store.GetGroupBySlug(ctx, membersSlug)
 		if lookupErr != nil {
@@ -2619,12 +2619,12 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 			membersGroup.GroveID = grove.ID
 			if updateErr := s.store.UpdateGroup(ctx, membersGroup); updateErr != nil {
 				slog.Warn("failed to update existing grove members group grove ID",
-					"grove", grove.ID, "slug", membersSlug, "error", updateErr)
+					"grove_id", grove.ID, "slug", membersSlug, "error", updateErr)
 			}
 		}
 	} else {
 		slog.Info("created grove members group",
-			"grove", grove.ID, "group", membersGroup.ID, "slug", membersSlug)
+			"grove_id", grove.ID, "group", membersGroup.ID, "slug", membersSlug)
 	}
 
 	// Add the creating user as an owner of the grove members group
@@ -2636,7 +2636,7 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 			Role:       store.GroupMemberRoleOwner,
 		}); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
 			slog.Warn("failed to add creator as owner of grove members group",
-				"grove", grove.ID, "user", grove.CreatedBy, "error", err)
+				"grove_id", grove.ID, "user", grove.CreatedBy, "error", err)
 		}
 	}
 
@@ -2650,7 +2650,7 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 			Role:       store.GroupMemberRoleOwner,
 		}); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
 			slog.Warn("failed to add caller as owner of grove members group",
-				"grove", grove.ID, "user", callerUserID[0], "error", err)
+				"grove_id", grove.ID, "user", callerUserID[0], "error", err)
 		}
 	}
 
@@ -2664,10 +2664,10 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 			if promoteErr := s.store.UpdateGroupMemberRole(ctx, membersGroup.ID,
 				members[0].MemberType, members[0].MemberID, store.GroupMemberRoleOwner); promoteErr != nil {
 				slog.Warn("failed to promote sole member to owner",
-					"grove", grove.ID, "group", membersGroup.ID, "user", members[0].MemberID, "error", promoteErr)
+					"grove_id", grove.ID, "group", membersGroup.ID, "user", members[0].MemberID, "error", promoteErr)
 			} else {
 				slog.Info("promoted sole grove member to owner",
-					"grove", grove.ID, "group", membersGroup.ID, "user", members[0].MemberID)
+					"grove_id", grove.ID, "group", membersGroup.ID, "user", members[0].MemberID)
 			}
 		}
 	}
@@ -2687,7 +2687,7 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 	if err := s.store.CreatePolicy(ctx, policy); err != nil {
 		if !errors.Is(err, store.ErrAlreadyExists) {
 			slog.Warn("failed to create grove member policy",
-				"grove", grove.ID, "policy", policyName, "error", err)
+				"grove_id", grove.ID, "policy", policyName, "error", err)
 			return
 		}
 		// Policy already exists — look it up and update its scope ID in case the
@@ -2695,7 +2695,7 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 		existing, lookupErr := s.store.ListPolicies(ctx, store.PolicyFilter{Name: policyName}, store.ListOptions{Limit: 1})
 		if lookupErr != nil || len(existing.Items) == 0 {
 			slog.Warn("failed to look up existing grove member policy",
-				"grove", grove.ID, "policy", policyName, "error", lookupErr)
+				"grove_id", grove.ID, "policy", policyName, "error", lookupErr)
 			return
 		}
 		policy = &existing.Items[0]
@@ -2703,7 +2703,7 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 			policy.ScopeID = grove.ID
 			if updateErr := s.store.UpdatePolicy(ctx, policy); updateErr != nil {
 				slog.Warn("failed to update existing grove member policy scope",
-					"grove", grove.ID, "policy", policyName, "error", updateErr)
+					"grove_id", grove.ID, "policy", policyName, "error", updateErr)
 			}
 		}
 	}
@@ -2715,7 +2715,7 @@ func (s *Server) createGroveMembersGroupAndPolicy(ctx context.Context, grove *st
 		PrincipalID:   membersGroup.ID,
 	}); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
 		slog.Warn("failed to bind grove member policy",
-			"grove", grove.ID, "policy", policyName, "error", err)
+			"grove_id", grove.ID, "policy", policyName, "error", err)
 	}
 }
 
@@ -2756,7 +2756,7 @@ func (s *Server) initHubNativeGrove(grove *store.Grove) error {
 	for key, value := range settingsUpdates {
 		if err := config.UpdateSetting(scionDir, key, value, false); err != nil {
 			slog.Warn("failed to update hub-native grove setting",
-				"grove", grove.ID, "key", key, "error", err)
+				"grove_id", grove.ID, "key", key, "error", err)
 		}
 	}
 
@@ -2801,7 +2801,7 @@ func (s *Server) syncWorkspaceOnStop(ctx context.Context, agent *store.Agent) {
 	var uploadResp RuntimeBrokerWorkspaceUploadResponse
 	if err := tunnelWorkspaceRequest(ctx, cc, agent.RuntimeBrokerID, "POST", "/api/v1/workspace/upload", uploadReq, &uploadResp); err != nil {
 		s.agentLifecycleLog.Warn("syncWorkspaceOnStop: failed to upload workspace from broker",
-			"agent", agent.Name, "grove", grove.ID, "error", err)
+			"agent", agent.Name, "grove_id", grove.ID, "error", err)
 		return
 	}
 
@@ -2814,10 +2814,10 @@ func (s *Server) syncWorkspaceOnStop(ctx context.Context, agent *store.Agent) {
 
 	if err := gcp.SyncFromGCS(ctx, stor.Bucket(), storagePath+"/files", workspacePath); err != nil {
 		s.agentLifecycleLog.Warn("syncWorkspaceOnStop: GCS download failed",
-			"grove", grove.ID, "error", err)
+			"grove_id", grove.ID, "error", err)
 	} else {
 		s.agentLifecycleLog.Info("syncWorkspaceOnStop: workspace synced back to Hub",
-			"grove", grove.ID, "path", workspacePath)
+			"grove_id", grove.ID, "path", workspacePath)
 	}
 }
 
@@ -2933,7 +2933,7 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 			callerID = user.ID()
 		}
 		slog.Info("backfilling groups for existing grove during register",
-			"grove", grove.ID, "slug", grove.Slug, "caller", callerID)
+			"grove_id", grove.ID, "slug", grove.Slug, "caller", callerID)
 		s.createGroveGroup(ctx, grove)
 		s.createGroveMembersGroupAndPolicy(ctx, grove, callerID)
 	}
@@ -3838,7 +3838,7 @@ func (s *Server) deleteGrove(w http.ResponseWriter, r *http.Request, id string) 
 	if groveGroups, err := s.store.ListGroups(ctx, store.GroupFilter{GroveID: id}, store.ListOptions{Limit: 100}); err == nil {
 		for _, g := range groveGroups.Items {
 			if delErr := s.store.DeleteGroup(ctx, g.ID); delErr != nil {
-				slog.Warn("failed to delete grove group", "grove", id, "group", g.ID, "slug", g.Slug, "error", delErr)
+				slog.Warn("failed to delete grove group", "grove_id", id, "group", g.ID, "slug", g.Slug, "error", delErr)
 			}
 		}
 	}
@@ -3847,7 +3847,7 @@ func (s *Server) deleteGrove(w http.ResponseWriter, r *http.Request, id string) 
 	if grovePolicies, err := s.store.ListPolicies(ctx, store.PolicyFilter{ScopeType: "grove", ScopeID: id}, store.ListOptions{Limit: 100}); err == nil {
 		for _, p := range grovePolicies.Items {
 			if delErr := s.store.DeletePolicy(ctx, p.ID); delErr != nil {
-				slog.Warn("failed to delete grove policy", "grove", id, "policy", p.ID, "name", p.Name, "error", delErr)
+				slog.Warn("failed to delete grove policy", "grove_id", id, "policy", p.ID, "name", p.Name, "error", delErr)
 			}
 		}
 	}
@@ -3855,16 +3855,16 @@ func (s *Server) deleteGrove(w http.ResponseWriter, r *http.Request, id string) 
 	// Clean up grove-scoped env vars (best-effort).
 	// These use scope/scope_id without FK cascade.
 	if n, err := s.store.DeleteEnvVarsByScope(ctx, store.ScopeGrove, id); err != nil {
-		slog.Warn("failed to delete grove env vars", "grove", id, "error", err)
+		slog.Warn("failed to delete grove env vars", "grove_id", id, "error", err)
 	} else if n > 0 {
-		slog.Info("deleted grove env vars", "grove", id, "count", n)
+		slog.Info("deleted grove env vars", "grove_id", id, "count", n)
 	}
 
 	// Clean up grove-scoped secrets (best-effort).
 	if n, err := s.store.DeleteSecretsByScope(ctx, store.ScopeGrove, id); err != nil {
-		slog.Warn("failed to delete grove secrets", "grove", id, "error", err)
+		slog.Warn("failed to delete grove secrets", "grove_id", id, "error", err)
 	} else if n > 0 {
-		slog.Info("deleted grove secrets", "grove", id, "count", n)
+		slog.Info("deleted grove secrets", "grove_id", id, "count", n)
 	}
 
 	// Clean up grove-scoped templates (best-effort), including storage files.
@@ -3890,7 +3890,7 @@ func (s *Server) deleteGrove(w http.ResponseWriter, r *http.Request, id string) 
 		if grovePath, err := hubNativeGrovePath(grove.Slug); err == nil {
 			if err := util.RemoveAllSafe(grovePath); err != nil {
 				slog.Warn("failed to remove hub-native grove directory",
-					"grove", id, "slug", grove.Slug, "path", grovePath, "error", err)
+					"grove_id", id, "slug", grove.Slug, "path", grovePath, "error", err)
 			}
 		}
 	}
@@ -3909,7 +3909,7 @@ func (s *Server) deleteGrove(w http.ResponseWriter, r *http.Request, id string) 
 			groveConfigDir := filepath.Dir(configPath)
 			if err := config.RemoveGroveConfig(groveConfigDir); err != nil && !os.IsNotExist(err) {
 				slog.Warn("failed to remove grove config directory",
-					"grove", id, "slug", grove.Slug, "path", groveConfigDir, "error", err)
+					"grove_id", id, "slug", grove.Slug, "path", groveConfigDir, "error", err)
 			}
 		}
 	}
@@ -3927,7 +3927,7 @@ func (s *Server) deleteGroveAgents(ctx context.Context, grove *store.Grove) {
 
 	result, err := s.store.ListAgents(ctx, store.AgentFilter{GroveID: grove.ID}, store.ListOptions{Limit: 1000})
 	if err != nil {
-		s.agentLifecycleLog.Warn("failed to list agents for grove deletion", "grove", grove.ID, "error", err)
+		s.agentLifecycleLog.Warn("failed to list agents for grove deletion", "grove_id", grove.ID, "error", err)
 		return
 	}
 
@@ -3956,22 +3956,22 @@ func (s *Server) deleteGroveTemplates(ctx context.Context, groveID string) {
 		ScopeID: groveID,
 	}, store.ListOptions{Limit: 1000})
 	if err != nil {
-		slog.Warn("failed to list grove templates for deletion", "grove", groveID, "error", err)
+		slog.Warn("failed to list grove templates for deletion", "grove_id", groveID, "error", err)
 	} else if stor := s.GetStorage(); stor != nil {
 		for _, tmpl := range templates.Items {
 			if tmpl.StoragePath != "" {
 				if err := stor.DeletePrefix(ctx, tmpl.StoragePath); err != nil {
 					slog.Warn("failed to delete template storage files",
-						"grove", groveID, "template", tmpl.ID, "path", tmpl.StoragePath, "error", err)
+						"grove_id", groveID, "template", tmpl.ID, "path", tmpl.StoragePath, "error", err)
 				}
 			}
 		}
 	}
 
 	if n, err := s.store.DeleteTemplatesByScope(ctx, store.ScopeGrove, groveID); err != nil {
-		slog.Warn("failed to delete grove templates", "grove", groveID, "error", err)
+		slog.Warn("failed to delete grove templates", "grove_id", groveID, "error", err)
 	} else if n > 0 {
-		slog.Info("deleted grove templates", "grove", groveID, "count", n)
+		slog.Info("deleted grove templates", "grove_id", groveID, "count", n)
 	}
 }
 
@@ -3985,22 +3985,22 @@ func (s *Server) deleteGroveHarnessConfigs(ctx context.Context, groveID string) 
 		ScopeID: groveID,
 	}, store.ListOptions{Limit: 1000})
 	if err != nil {
-		slog.Warn("failed to list grove harness configs for deletion", "grove", groveID, "error", err)
+		slog.Warn("failed to list grove harness configs for deletion", "grove_id", groveID, "error", err)
 	} else if stor := s.GetStorage(); stor != nil {
 		for _, hc := range configs.Items {
 			if hc.StoragePath != "" {
 				if err := stor.DeletePrefix(ctx, hc.StoragePath); err != nil {
 					slog.Warn("failed to delete harness config storage files",
-						"grove", groveID, "harnessConfig", hc.ID, "path", hc.StoragePath, "error", err)
+						"grove_id", groveID, "harnessConfig", hc.ID, "path", hc.StoragePath, "error", err)
 				}
 			}
 		}
 	}
 
 	if n, err := s.store.DeleteHarnessConfigsByScope(ctx, store.ScopeGrove, groveID); err != nil {
-		slog.Warn("failed to delete grove harness configs", "grove", groveID, "error", err)
+		slog.Warn("failed to delete grove harness configs", "grove_id", groveID, "error", err)
 	} else if n > 0 {
-		slog.Info("deleted grove harness configs", "grove", groveID, "count", n)
+		slog.Info("deleted grove harness configs", "grove_id", groveID, "count", n)
 	}
 }
 
@@ -4015,7 +4015,7 @@ func (s *Server) cleanupBrokerGroveDirectories(ctx context.Context, grove *store
 
 	providers, err := s.store.GetGroveProviders(ctx, grove.ID)
 	if err != nil {
-		slog.Warn("failed to get grove providers for cleanup", "grove", grove.ID, "error", err)
+		slog.Warn("failed to get grove providers for cleanup", "grove_id", grove.ID, "error", err)
 		return
 	}
 
@@ -4031,7 +4031,7 @@ func (s *Server) cleanupBrokerGroveDirectories(ctx context.Context, grove *store
 		}
 	}
 	if client == nil {
-		slog.Warn("no RuntimeBrokerClient available for grove cleanup dispatch", "grove", grove.ID)
+		slog.Warn("no RuntimeBrokerClient available for grove cleanup dispatch", "grove_id", grove.ID)
 		return
 	}
 
@@ -4044,13 +4044,13 @@ func (s *Server) cleanupBrokerGroveDirectories(ctx context.Context, grove *store
 		broker, err := s.store.GetRuntimeBroker(ctx, provider.BrokerID)
 		if err != nil {
 			slog.Warn("failed to get broker for grove cleanup",
-				"grove", grove.ID, "broker", provider.BrokerID, "error", err)
+				"grove_id", grove.ID, "broker", provider.BrokerID, "error", err)
 			continue
 		}
 
 		if err := client.CleanupGrove(ctx, provider.BrokerID, broker.Endpoint, grove.Slug); err != nil {
 			slog.Warn("failed to cleanup grove on broker",
-				"grove", grove.ID, "slug", grove.Slug,
+				"grove_id", grove.ID, "slug", grove.Slug,
 				"broker", provider.BrokerID, "endpoint", broker.Endpoint, "error", err)
 		}
 	}
@@ -6363,7 +6363,7 @@ func (s *Server) autoLinkProviders(ctx context.Context, grove *store.Grove) {
 		AutoProvide: &autoProvideTrue,
 	}, store.ListOptions{})
 	if err != nil {
-		s.envSecretLog.Warn("Failed to query auto-provide brokers", "grove", grove.ID, "error", err)
+		s.envSecretLog.Warn("Failed to query auto-provide brokers", "grove_id", grove.ID, "error", err)
 		return
 	}
 
@@ -6377,7 +6377,7 @@ func (s *Server) autoLinkProviders(ctx context.Context, grove *store.Grove) {
 		}
 		if addErr := s.store.AddGroveProvider(ctx, provider); addErr != nil {
 			s.envSecretLog.Warn("Failed to auto-link broker to grove",
-				"broker", autoBroker.Name, "grove", grove.ID, "error", addErr)
+				"broker", autoBroker.Name, "grove_id", grove.ID, "error", addErr)
 			continue
 		}
 
@@ -6386,7 +6386,7 @@ func (s *Server) autoLinkProviders(ctx context.Context, grove *store.Grove) {
 			grove.DefaultRuntimeBrokerID = autoBroker.ID
 			if updateErr := s.store.UpdateGrove(ctx, grove); updateErr != nil {
 				s.envSecretLog.Warn("Failed to set default runtime broker",
-					"broker", autoBroker.Name, "grove", grove.ID, "error", updateErr)
+					"broker", autoBroker.Name, "grove_id", grove.ID, "error", updateErr)
 			}
 		}
 	}
@@ -7338,7 +7338,7 @@ func (s *Server) resolveRuntimeBroker(ctx context.Context, w http.ResponseWriter
 	}
 
 	slog.Debug("Resolving runtime broker",
-		"grove", grove.ID, "groveName", grove.Name,
+		"grove_id", grove.ID, "groveName", grove.Name,
 		"requestedBroker", requestedBrokerID,
 		"totalProviders", len(allProviders),
 		"onlineProviders", len(availableBrokers),
@@ -7395,19 +7395,19 @@ func (s *Server) resolveRuntimeBroker(ctx context.Context, w http.ResponseWriter
 			}
 			if addErr := s.store.AddGroveProvider(ctx, provider); addErr != nil {
 				slog.Warn("Failed to auto-link broker during agent creation",
-					"broker", broker.Name, "grove", grove.ID, "error", addErr)
+					"broker", broker.Name, "grove_id", grove.ID, "error", addErr)
 				RuntimeBrokerUnavailable(w, requestedBrokerID, brokerSummaries)
 				return "", store.ErrNotFound
 			}
 			slog.Info("Auto-linked broker as grove provider",
-				"broker", broker.Name, "brokerID", broker.ID, "grove", grove.ID)
+				"broker", broker.Name, "brokerID", broker.ID, "grove_id", grove.ID)
 
 			// Set as default if grove has none
 			if grove.DefaultRuntimeBrokerID == "" {
 				grove.DefaultRuntimeBrokerID = broker.ID
 				if updateErr := s.store.UpdateGrove(ctx, grove); updateErr != nil {
 					slog.Warn("Failed to set default runtime broker",
-						"broker", broker.Name, "grove", grove.ID, "error", updateErr)
+						"broker", broker.Name, "grove_id", grove.ID, "error", updateErr)
 				}
 			}
 			return broker.ID, nil
@@ -7729,7 +7729,7 @@ func (s *Server) handleGroveSyncTemplates(w http.ResponseWriter, r *http.Request
 	s.events.PublishAgentCreated(ctx, agent)
 
 	s.agentLifecycleLog.Info("Template sync agent dispatched",
-		"agent", agent.ID, "grove", groveID, "broker", runtimeBrokerID)
+		"agent", agent.ID, "grove_id", groveID, "broker", runtimeBrokerID)
 
 	writeJSON(w, http.StatusOK, SyncTemplatesResponse{
 		AgentID: agent.ID,

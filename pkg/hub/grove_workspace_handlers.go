@@ -600,7 +600,7 @@ func (s *Server) resolveSharedDirPath(ctx context.Context, grove *store.Grove, d
 	// Git-based grove: find the co-located broker's local path for this grove
 	providers, err := s.store.GetGroveProviders(ctx, grove.ID)
 	if err != nil {
-		slog.Warn("failed to get grove providers for shared dir browsing", "grove", grove.ID, "error", err)
+		slog.Warn("failed to get grove providers for shared dir browsing", "grove_id", grove.ID, "error", err)
 		return nil, fmt.Errorf("failed to resolve grove providers")
 	}
 

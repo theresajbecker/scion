@@ -701,9 +701,9 @@ func (s *Server) syncHubNativeWorkspaceBack(ctx context.Context, agent *store.Ag
 	groveStoragePath := storage.GroveWorkspaceStoragePath(grove.ID)
 	if err := gcp.SyncFromGCS(ctx, stor.Bucket(), groveStoragePath+"/files", workspacePath); err != nil {
 		s.workspaceLog.Warn("syncHubNativeWorkspaceBack: GCS download failed",
-			"grove", grove.ID, "storagePath", groveStoragePath, "error", err)
+			"grove_id", grove.ID, "storagePath", groveStoragePath, "error", err)
 	} else {
 		s.workspaceLog.Info("syncHubNativeWorkspaceBack: workspace synced to Hub filesystem",
-			"grove", grove.ID, "path", workspacePath)
+			"grove_id", grove.ID, "path", workspacePath)
 	}
 }

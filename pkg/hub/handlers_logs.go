@@ -74,7 +74,7 @@ func (s *Server) handleAgentLogs(w http.ResponseWriter, r *http.Request, agentID
 
 	logs, err := dispatcher.DispatchAgentLogs(ctx, agent, tail)
 	if err != nil {
-		slog.Error("agent log relay failed", "agentID", agentID, "error", err)
+		slog.Error("agent log relay failed", "agent_id", agentID, "grove_id", agent.GroveID, "error", err)
 		writeError(w, http.StatusBadGateway, ErrCodeInternalError,
 			"Failed to retrieve logs from broker: "+err.Error(), nil)
 		return
@@ -151,7 +151,7 @@ func (s *Server) handleAgentCloudLogs(w http.ResponseWriter, r *http.Request, ag
 
 	result, err := s.logQueryService.Query(ctx, opts)
 	if err != nil {
-		slog.Error("cloud log query failed", "agentID", agentID, "error", err)
+		slog.Error("cloud log query failed", "agent_id", agentID, "grove_id", agent.GroveID, "error", err)
 		writeError(w, http.StatusInternalServerError, ErrCodeInternalError,
 			"Failed to query cloud logs", nil)
 		return
@@ -220,7 +220,7 @@ func (s *Server) handleAgentCloudLogsStream(w http.ResponseWriter, r *http.Reque
 	// Open a Tail stream via the Cloud Logging Tail API
 	tailCh, tailCancel, err := s.logQueryService.Tail(ctx, opts)
 	if err != nil {
-		slog.Error("failed to open tail stream", "agentID", agentID, "error", err)
+		slog.Error("failed to open tail stream", "agent_id", agentID, "grove_id", agent.GroveID, "error", err)
 		fmt.Fprintf(w, "event: error\ndata: {\"message\":\"failed to open log stream\"}\n\n")
 		flusher.Flush()
 		return
@@ -324,7 +324,7 @@ func (s *Server) handleAgentMessageLogs(w http.ResponseWriter, r *http.Request, 
 
 	result, err := s.logQueryService.Query(ctx, opts)
 	if err != nil {
-		slog.Error("message log query failed", "agentID", agentID, "error", err)
+		slog.Error("message log query failed", "agent_id", agentID, "grove_id", agent.GroveID, "error", err)
 		writeError(w, http.StatusInternalServerError, ErrCodeInternalError,
 			"Failed to query message logs", nil)
 		return
@@ -384,7 +384,7 @@ func (s *Server) handleAgentMessageLogsStream(w http.ResponseWriter, r *http.Req
 
 	tailCh, tailCancel, err := s.logQueryService.Tail(ctx, opts)
 	if err != nil {
-		slog.Error("failed to open message log tail stream", "agentID", agentID, "error", err)
+		slog.Error("failed to open message log tail stream", "agent_id", agentID, "grove_id", agent.GroveID, "error", err)
 		fmt.Fprintf(w, "event: error\ndata: {\"message\":\"failed to open message log stream\"}\n\n")
 		flusher.Flush()
 		return

@@ -326,9 +326,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Debug log incoming request
 	if s.config.Debug {
-		s.agentLifecycleLog.Debug("Creating agent", "agent_id", req.ID, "name", req.Name, "slug", req.Slug, "groveID", req.GroveID)
+		s.agentLifecycleLog.Debug("Creating agent", "agent_id", req.ID, "grove_id", req.GroveID, "name", req.Name, "slug", req.Slug)
 		s.agentLifecycleLog.Debug("Hub credentials",
 			"agent_id", req.ID,
+			"grove_id", req.GroveID,
 			"hubEndpoint", req.HubEndpoint,
 			"hasToken", req.AgentToken != "",
 			"slug", req.Slug,
@@ -336,6 +337,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		if req.Config != nil {
 			s.agentLifecycleLog.Debug("Agent configuration",
 				"agent_id", req.ID,
+				"grove_id", req.GroveID,
 				"template", req.Config.Template,
 				"image", req.Config.Image,
 				"templateID", req.Config.TemplateID,
@@ -584,7 +586,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		// can discover the grove context and use the Hub API.
 		if req.GroveID != "" && req.GroveSlug != "" {
 			if writeErr := config.WriteWorkspaceMarker(workspaceDir, req.GroveID, req.GroveSlug, req.GroveSlug); writeErr != nil {
-				s.agentLifecycleLog.Warn("Failed to write workspace marker", "agent_id", req.ID, "error", writeErr)
+				s.agentLifecycleLog.Warn("Failed to write workspace marker", "agent_id", req.ID, "grove_id", req.GroveID, "error", writeErr)
 			}
 		}
 	}
@@ -636,10 +638,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		if opts.GrovePath != "" {
 			if _, cleanupErr := agent.DeleteAgentFiles(opts.Name, opts.GrovePath, true); cleanupErr != nil {
 				s.agentLifecycleLog.Warn("Failed to clean up agent files after start failure",
-					"agent_id", req.ID, "agent", opts.Name, "error", cleanupErr)
+					"agent_id", req.ID, "grove_id", req.GroveID, "agent", opts.Name, "error", cleanupErr)
 			} else {
 				s.agentLifecycleLog.Info("Cleaned up provisioned agent files after start failure",
-					"agent_id", req.ID, "agent", opts.Name)
+					"agent_id", req.ID, "grove_id", req.GroveID, "agent", opts.Name)
 			}
 		}
 		RuntimeError(w, "Failed to create agent: "+err.Error())
@@ -649,7 +651,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	// Log auth resolution info visible in broker logs
 	for _, w := range agentInfo.Warnings {
 		if strings.HasPrefix(w, "Auth:") {
-			s.agentLifecycleLog.Info("Agent auth resolution", "agent_id", req.ID, "agent", req.Name, "result", w)
+			s.agentLifecycleLog.Info("Agent auth resolution", "agent_id", req.ID, "grove_id", req.GroveID, "agent", req.Name, "result", w)
 		}
 	}
 
