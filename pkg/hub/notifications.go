@@ -109,21 +109,21 @@ func (nd *NotificationDispatcher) handleEvent(evt Event) {
 	ctx := context.Background()
 
 	nd.log.Debug("Notification dispatcher received event",
-		"agentID", statusEvt.AgentID, "activity", statusEvt.Activity, "phase", statusEvt.Phase)
+		"agent_id", statusEvt.AgentID, "activity", statusEvt.Activity, "phase", statusEvt.Phase)
 
 	// Collect subscriptions from both scopes: agent-scoped first (more specific),
 	// then grove-scoped.
 	agentSubs, err := nd.store.GetNotificationSubscriptions(ctx, statusEvt.AgentID)
 	if err != nil {
 		nd.log.Error("Failed to get agent notification subscriptions",
-			"agentID", statusEvt.AgentID, "error", err)
+			"agent_id", statusEvt.AgentID, "error", err)
 		return
 	}
 
 	groveSubs, err := nd.store.GetNotificationSubscriptionsByGroveScope(ctx, statusEvt.GroveID)
 	if err != nil {
 		nd.log.Error("Failed to get grove notification subscriptions",
-			"groveID", statusEvt.GroveID, "error", err)
+			"grove_id", statusEvt.GroveID, "error", err)
 		// Continue with agent-scoped only
 		groveSubs = nil
 	}
@@ -141,7 +141,7 @@ func (nd *NotificationDispatcher) handleEvent(evt Event) {
 	}
 
 	nd.log.Debug("Notification dispatcher checking subscriptions",
-		"agentID", statusEvt.AgentID, "activity", matchStatus, "subscriptionCount", len(allSubs))
+		"agent_id", statusEvt.AgentID, "activity", matchStatus, "subscriptionCount", len(allSubs))
 
 	// Deduplicate: one notification per (subscriber_type, subscriber_id).
 	// Agent-scoped subscriptions are checked first since they are more specific.
@@ -188,13 +188,13 @@ func (nd *NotificationDispatcher) handleDeletedEvent(evt Event) {
 	ctx := context.Background()
 
 	nd.log.Debug("Notification dispatcher received deleted event",
-		"agentID", deletedEvt.AgentID, "groveID", deletedEvt.GroveID)
+		"agent_id", deletedEvt.AgentID, "grove_id", deletedEvt.GroveID)
 
 	// Collect subscriptions from both scopes
 	agentSubs, err := nd.store.GetNotificationSubscriptions(ctx, deletedEvt.AgentID)
 	if err != nil {
 		nd.log.Error("Failed to get agent notification subscriptions for deleted event",
-			"agentID", deletedEvt.AgentID, "error", err)
+			"agent_id", deletedEvt.AgentID, "error", err)
 		agentSubs = nil
 	}
 
@@ -242,7 +242,7 @@ func (nd *NotificationDispatcher) storeAndDispatch(ctx context.Context, sub *sto
 	agent, err := nd.store.GetAgent(ctx, evt.AgentID)
 	if err != nil {
 		nd.log.Error("Failed to get agent for notification",
-			"agentID", evt.AgentID, "error", err)
+			"agent_id", evt.AgentID, "error", err)
 		return
 	}
 
@@ -256,7 +256,7 @@ func (nd *NotificationDispatcher) storeAndDispatch(ctx context.Context, sub *sto
 		}
 		if !activityTime.IsZero() && activityTime.Before(sub.CreatedAt) {
 			nd.log.Debug("Skipping notification for stale event predating subscription",
-				"subscriptionID", sub.ID, "agentID", evt.AgentID,
+				"subscriptionID", sub.ID, "agent_id", evt.AgentID,
 				"activityTime", activityTime, "subscriptionCreatedAt", sub.CreatedAt)
 			return
 		}
@@ -284,12 +284,12 @@ func (nd *NotificationDispatcher) storeAndDispatch(ctx context.Context, sub *sto
 
 	if err := nd.store.CreateNotification(ctx, notif); err != nil {
 		nd.log.Error("Failed to create notification",
-			"subscriptionID", sub.ID, "agentID", evt.AgentID, "error", err)
+			"subscriptionID", sub.ID, "agent_id", evt.AgentID, "error", err)
 		return
 	}
 
 	nd.log.Info("Notification created",
-		"notificationID", notif.ID, "agentID", evt.AgentID, "subscriber", sub.SubscriberType+":"+sub.SubscriberID, "status", notif.Status)
+		"notificationID", notif.ID, "agent_id", evt.AgentID, "subscriber", sub.SubscriberType+":"+sub.SubscriberID, "status", notif.Status)
 
 	switch sub.SubscriberType {
 	case store.SubscriberTypeAgent:

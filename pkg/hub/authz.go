@@ -162,7 +162,7 @@ func (a *AuthzService) checkAccessForAgent(ctx context.Context, agent AgentIdent
 
 	groupIDs, err := a.store.GetEffectiveGroupsForAgent(ctx, agent.ID())
 	if err != nil {
-		a.logger.Warn("failed to get effective groups for agent", "agentID", agent.ID(), "error", err)
+		a.logger.Warn("failed to get effective groups for agent", "agent_id", agent.ID(), "error", err)
 	}
 	for _, gid := range groupIDs {
 		principals = append(principals, store.PrincipalRef{Type: "group", ID: gid})
@@ -220,7 +220,7 @@ func (a *AuthzService) checkDelegation(ctx context.Context, agent AgentIdentity,
 		// Check delegation access via the store (verifies creator, enabled flag, etc.)
 		allowed, err := a.store.CheckDelegatedAccess(ctx, agent.ID(), policy.Conditions)
 		if err != nil {
-			a.logger.Warn("delegation check failed", "agentID", agent.ID(), "policyID", policy.ID, "error", err)
+			a.logger.Warn("delegation check failed", "agent_id", agent.ID(), "policyID", policy.ID, "error", err)
 			continue
 		}
 		if allowed && policy.Effect == "allow" {

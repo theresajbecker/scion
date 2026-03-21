@@ -666,7 +666,7 @@ func (s *Server) syncHubNativeWorkspaceBack(ctx context.Context, agent *store.Ag
 
 	grove, err := s.store.GetGrove(ctx, agent.GroveID)
 	if err != nil {
-		s.workspaceLog.Warn("syncHubNativeWorkspaceBack: failed to get grove", "groveID", agent.GroveID, "error", err)
+		s.workspaceLog.Warn("syncHubNativeWorkspaceBack: failed to get grove", "agent_id", agent.ID, "grove_id", agent.GroveID, "error", err)
 		return
 	}
 

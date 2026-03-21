@@ -577,7 +577,7 @@ func New(cfg ServerConfig, s store.Store) *Server {
 		} else {
 			for _, provider := range providers {
 				if err := s.UpdateProviderStatus(ctx, provider.GroveID, brokerID, store.BrokerStatusOffline); err != nil {
-					slog.Error("Failed to update provider status", "brokerID", brokerID, "groveID", provider.GroveID, "error", err)
+					slog.Error("Failed to update provider status", "brokerID", brokerID, "grove_id", provider.GroveID, "error", err)
 				}
 			}
 
@@ -1159,7 +1159,7 @@ func (s *Server) messageEventHandler() EventHandler {
 			slog.Warn("Scheduler: firing stale message event",
 				"eventID", evt.ID,
 				"agentName", payload.AgentName,
-				"agentID", payload.AgentID,
+				"agent_id", payload.AgentID,
 				"scheduledFor", evt.FireAt.Format(time.RFC3339),
 				"staleness", staleness.Truncate(time.Second).String())
 		}
@@ -1185,7 +1185,7 @@ func (s *Server) messageEventHandler() EventHandler {
 				slog.Warn("Scheduler: target agent no longer exists, dropping scheduled message",
 					"eventID", evt.ID,
 					"agentName", payload.AgentName,
-					"agentID", payload.AgentID,
+					"agent_id", payload.AgentID,
 					"groveID", evt.GroveID,
 					"message", payload.Message)
 				return fmt.Errorf("target agent %q no longer exists", targetName)
@@ -1208,7 +1208,7 @@ func (s *Server) messageEventHandler() EventHandler {
 		}
 
 		slog.Info("Scheduler: message delivered to agent",
-			"eventID", evt.ID, "agentID", agent.ID, "agentName", agent.Name)
+			"eventID", evt.ID, "agent_id", agent.ID, "agentName", agent.Name)
 		return nil
 	}
 }
@@ -1324,7 +1324,7 @@ func (s *Server) dispatchAgentEventHandler() EventHandler {
 		if dispatcher == nil {
 			slog.Warn("Scheduler: no dispatcher available, agent created but not started",
 				"eventID", evt.ID,
-				"agentID", agent.ID,
+				"agent_id", agent.ID,
 				"agentName", agent.Name)
 			return nil
 		}
@@ -1332,15 +1332,15 @@ func (s *Server) dispatchAgentEventHandler() EventHandler {
 		if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
 			slog.Error("Scheduler: failed to dispatch agent creation",
 				"eventID", evt.ID,
-				"agentID", agent.ID,
+				"agent_id", agent.ID,
 				"agentName", agent.Name,
 				"error", err)
 			return fmt.Errorf("failed to dispatch agent %q: %w", slug, err)
 		}
 
 		slog.Info("Scheduler: agent dispatched successfully",
-			"eventID", evt.ID, "agentID", agent.ID, "agentName", agent.Name,
-			"groveID", evt.GroveID)
+			"eventID", evt.ID, "agent_id", agent.ID, "agentName", agent.Name,
+			"grove_id", evt.GroveID)
 		return nil
 	}
 }
@@ -1995,7 +1995,7 @@ func (s *Server) markBrokerOnline(brokerID string) {
 	}
 	for _, provider := range providers {
 		if err := s.store.UpdateProviderStatus(ctx, provider.GroveID, brokerID, store.BrokerStatusOnline); err != nil {
-			slog.Error("Failed to update provider status", "brokerID", brokerID, "groveID", provider.GroveID, "error", err)
+			slog.Error("Failed to update provider status", "brokerID", brokerID, "grove_id", provider.GroveID, "error", err)
 		}
 	}
 

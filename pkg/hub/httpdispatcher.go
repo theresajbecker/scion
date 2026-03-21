@@ -224,6 +224,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 
 	if d.debug {
 		d.log.Debug(callerName,
+			"agent_id", agent.ID,
 			"agentName", agent.Name,
 			"hubEndpoint", d.hubEndpoint,
 			"hasTokenGenerator", d.tokenGenerator != nil,
@@ -320,7 +321,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 	envFromStorage, err := d.resolveEnvFromStorage(ctx, agent)
 	if err != nil {
 		if d.debug {
-			d.log.Warn("buildCreateRequest: failed to resolve env from storage", "error", err)
+			d.log.Warn("buildCreateRequest: failed to resolve env from storage", "agent_id", agent.ID, "error", err)
 		}
 	} else if len(envFromStorage) > 0 {
 		if req.ResolvedEnv == nil {
@@ -353,7 +354,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 	resolvedSecrets, err := d.resolveSecrets(ctx, agent)
 	if err != nil {
 		if d.debug {
-			d.log.Warn("Failed to resolve secrets", "error", err)
+			d.log.Warn("Failed to resolve secrets", "agent_id", agent.ID, "error", err)
 		}
 		// Continue without secrets rather than failing agent creation
 	} else if len(resolvedSecrets) > 0 {
@@ -410,7 +411,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 				if mintErr != nil {
 					if d.debug {
 						d.log.Warn("buildCreateRequest: GitHub App token minting failed, falling back to PAT",
-							"error", mintErr, "groveID", agent.GroveID)
+							"error", mintErr, "grove_id", agent.GroveID)
 					}
 					// Fall through — PAT from secrets/env may still be available
 				} else if token != "" {
@@ -423,7 +424,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 					req.ResolvedEnv["SCION_GITHUB_TOKEN_PATH"] = "/tmp/.github-token"
 					if d.debug {
 						d.log.Debug("buildCreateRequest: injected GitHub App token",
-							"groveID", agent.GroveID,
+							"grove_id", agent.GroveID,
 							"installationID", *mintGrove.GitHubInstallationID,
 							"expiry", expiry)
 					}
@@ -727,7 +728,7 @@ func (d *HTTPAgentDispatcher) resolveEnvFromStorage(ctx context.Context, agent *
 				for _, v := range vars {
 					keys = append(keys, v.Key)
 				}
-				d.log.Debug("resolveEnvFromStorage: grove scope", "groveID", agent.GroveID, "count", len(vars), "keys", keys)
+				d.log.Debug("resolveEnvFromStorage: grove scope", "grove_id", agent.GroveID, "count", len(vars), "keys", keys)
 			}
 			for _, v := range vars {
 				result[v.Key] = v.Value
@@ -962,7 +963,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 					if mintErr != nil {
 						if d.debug {
 							d.log.Warn("DispatchAgentStart: GitHub App token minting failed",
-								"error", mintErr, "groveID", agent.GroveID)
+								"error", mintErr, "grove_id", agent.GroveID)
 						}
 					} else if token != "" {
 						resolvedEnv["GITHUB_TOKEN"] = token
@@ -1108,7 +1109,7 @@ func (d *HTTPAgentDispatcher) resolveSecrets(ctx context.Context, agent *store.A
 	if d.debug {
 		d.log.Debug("resolveSecrets: querying secret backend",
 			"ownerID", agent.OwnerID,
-			"groveID", agent.GroveID,
+			"grove_id", agent.GroveID,
 			"brokerID", agent.RuntimeBrokerID,
 		)
 	}

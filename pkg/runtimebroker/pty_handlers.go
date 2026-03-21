@@ -151,7 +151,7 @@ func (s *Server) handleAgentAttach(w http.ResponseWriter, r *http.Request) {
 	// Upgrade to WebSocket
 	conn, err := ptyUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		slog.Error("WebSocket upgrade failed for agent", "agentID", agentID, "error", err)
+		slog.Error("WebSocket upgrade failed for agent", "agent_id", agentID, "error", err)
 		return
 	}
 	defer conn.Close()
@@ -171,15 +171,15 @@ func (s *Server) handleAgentAttach(w http.ResponseWriter, r *http.Request) {
 		runtimeCmd = s.RuntimeCommand()
 	}
 
-	slog.Info("Attach session started", "agentID", agentID, "containerID", containerID, "runtime", runtimeCmd)
+	slog.Info("Attach session started", "agent_id", agentID, "containerID", containerID, "runtime", runtimeCmd)
 
 	// Start PTY session
 	session := newLocalPTYSession(ctx, agentID, containerID, runtimeCmd, result.Namespace, conn, cols, rows, result.K8sConfig, result.K8sClientset)
 	if err := session.Run(); err != nil && err != io.EOF {
-		slog.Error("Attach session error", "agentID", agentID, "error", err)
+		slog.Error("Attach session error", "agent_id", agentID, "error", err)
 	}
 
-	slog.Info("Attach session ended", "agentID", agentID)
+	slog.Info("Attach session ended", "agent_id", agentID)
 }
 
 // extractAgentIDFromAttachPath extracts agent ID from /api/v1/agents/{id}/attach
@@ -509,9 +509,9 @@ func (s *LocalPTYSession) readFromWebSocket() error {
 					Cols: uint16(msg.Cols),
 					Rows: uint16(msg.Rows),
 				}); err != nil {
-					slog.Debug("PTY resize failed", "agentID", s.agentID, "error", err)
+					slog.Debug("PTY resize failed", "agent_id", s.agentID, "error", err)
 				} else {
-					slog.Debug("PTY resized", "agentID", s.agentID, "cols", msg.Cols, "rows", msg.Rows)
+					slog.Debug("PTY resized", "agent_id", s.agentID, "cols", msg.Cols, "rows", msg.Rows)
 				}
 			}
 		}

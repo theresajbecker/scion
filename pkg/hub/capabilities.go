@@ -248,7 +248,7 @@ func (a *AuthzService) precomputeForIdentity(ctx context.Context, identity Ident
 		principals = append(principals, store.PrincipalRef{Type: "agent", ID: identity.ID()})
 		groupIDs, err := a.store.GetEffectiveGroupsForAgent(ctx, identity.ID())
 		if err != nil {
-			a.logger.Warn("failed to get effective groups for agent", "agentID", identity.ID(), "error", err)
+			a.logger.Warn("failed to get effective groups for agent", "agent_id", identity.ID(), "error", err)
 		}
 		for _, gid := range groupIDs {
 			principals = append(principals, store.PrincipalRef{Type: "group", ID: gid})

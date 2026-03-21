@@ -98,7 +98,7 @@ func (s *Server) handleAgentPTY(w http.ResponseWriter, r *http.Request) {
 		}, ActionAttach)
 		if !decision.Allowed {
 			slog.Warn("PTY access denied: policy check failed",
-				"agentID", agentID,
+				"agent_id", agentID,
 				"userID", user.ID(),
 				"reason", decision.Reason)
 			writeError(w, http.StatusForbidden, ErrCodeForbidden, "Access denied", nil)
@@ -123,7 +123,7 @@ func (s *Server) handleAgentPTY(w http.ResponseWriter, r *http.Request) {
 	// Upgrade to WebSocket
 	conn, err := ptyUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		slog.Error("WebSocket upgrade failed for agent", "agentID", agentID, "error", err)
+		slog.Error("WebSocket upgrade failed for agent", "agent_id", agentID, "error", err)
 		return
 	}
 
@@ -143,14 +143,14 @@ func (s *Server) handleAgentPTY(w http.ResponseWriter, r *http.Request) {
 	session := newPTYSession(ctx, agent.Slug, agent.RuntimeBrokerID, conn, s.controlChannel, cols, rows)
 	defer session.Close()
 
-	slog.Info("PTY session started", "agentID", agentID, "slug", agent.Slug, "user", identity.ID())
+	slog.Info("PTY session started", "agent_id", agentID, "slug", agent.Slug, "user", identity.ID())
 
 	// Run the session
 	if err := session.Run(); err != nil && err != io.EOF {
-		slog.Error("PTY session error", "agentID", agentID, "slug", agent.Slug, "error", err)
+		slog.Error("PTY session error", "agent_id", agentID, "slug", agent.Slug, "error", err)
 	}
 
-	slog.Info("PTY session ended", "agentID", agentID, "slug", agent.Slug)
+	slog.Info("PTY session ended", "agent_id", agentID, "slug", agent.Slug)
 }
 
 // extractAgentIDFromPTYPath extracts the agent ID from a PTY path.
@@ -287,7 +287,7 @@ func (s *PTYSession) readFromClient() error {
 			}
 			// Forward resize to broker via control channel
 			if err := s.controlChan.ResizeStream(s.brokerID, s.stream.streamID, msg.Cols, msg.Rows); err != nil {
-				slog.Debug("PTY Resize forward failed", "agentID", s.agentID, "error", err)
+				slog.Debug("PTY Resize forward failed", "agent_id", s.agentID, "error", err)
 			}
 		}
 	}

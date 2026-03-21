@@ -187,7 +187,7 @@ func (p *MessageBrokerProxy) handleLifecycleEvent(evt Event) {
 		// are rebuilt. Individual cleanup is handled by the broker's
 		// Unsubscribe mechanism if needed.
 		p.log.Debug("Agent deleted, broker subscriptions will be cleaned on next grove rebuild",
-			"agentID", deleted.AgentID, "groveID", deleted.GroveID)
+			"agent_id", deleted.AgentID, "grove_id", deleted.GroveID)
 	}
 }
 
@@ -297,7 +297,7 @@ func (p *MessageBrokerProxy) fanOutToGrove(ctx context.Context, groveID string, 
 		return
 	}
 
-	p.log.Debug("Broadcasting to grove agents", "groveID", groveID, "count", len(result.Items))
+	p.log.Debug("Broadcasting to grove agents", "grove_id", groveID, "count", len(result.Items))
 
 	for _, agent := range result.Items {
 		// Skip the sender if it's an agent in this grove
