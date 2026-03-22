@@ -102,6 +102,18 @@ export class ScionPageGroveDetail extends LitElement {
   }> = {};
 
   /**
+   * File sort field
+   */
+  @state()
+  private fileSortField: 'name' | 'size' | 'modified' = 'name';
+
+  /**
+   * File sort direction
+   */
+  @state()
+  private fileSortDir: 'asc' | 'desc' = 'asc';
+
+  /**
    * Upload in progress
    */
   @state()
@@ -550,6 +562,27 @@ export class ScionPageGroveDetail extends LitElement {
       position: sticky;
       top: 0;
       z-index: 1;
+    }
+
+    .file-table th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .file-table th.sortable:hover {
+      color: var(--scion-text, #1e293b);
+    }
+
+    .file-table .sort-indicator {
+      display: inline-block;
+      margin-left: 0.25rem;
+      font-size: 0.625rem;
+      vertical-align: middle;
+      opacity: 0.4;
+    }
+
+    .file-table th.sorted .sort-indicator {
+      opacity: 1;
     }
 
     .file-table tr:last-child td {
@@ -1089,6 +1122,42 @@ export class ScionPageGroveDetail extends LitElement {
     return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
+  private toggleFileSort(field: 'name' | 'size' | 'modified'): void {
+    if (this.fileSortField === field) {
+      this.fileSortDir = this.fileSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.fileSortField = field;
+      this.fileSortDir = field === 'name' ? 'asc' : 'desc';
+    }
+  }
+
+  private fileSortIndicator(field: 'name' | 'size' | 'modified'): string {
+    return this.fileSortField === field ? (this.fileSortDir === 'asc' ? '▲' : '▼') : '▲';
+  }
+
+  private getSortedFiles(
+    files: Array<{ path: string; size: number; modTime: string; mode: string }>
+  ): Array<{ path: string; size: number; modTime: string; mode: string }> {
+    return [...files].sort((a, b) => {
+      let cmp = 0;
+      switch (this.fileSortField) {
+        case 'name':
+          cmp = a.path.localeCompare(b.path);
+          break;
+        case 'size':
+          cmp = a.size - b.size;
+          break;
+        case 'modified': {
+          const aTime = a.modTime ? new Date(a.modTime).getTime() : 0;
+          const bTime = b.modTime ? new Date(b.modTime).getTime() : 0;
+          cmp = aTime - bTime;
+          break;
+        }
+      }
+      return this.fileSortDir === 'asc' ? cmp : -cmp;
+    });
+  }
+
   private async handleAgentAction(
     agentId: string,
     action: 'start' | 'stop' | 'delete',
@@ -1539,14 +1608,32 @@ export class ScionPageGroveDetail extends LitElement {
         <table class="file-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Size</th>
-              <th>Modified</th>
+              <th
+                class="sortable ${this.fileSortField === 'name' ? 'sorted' : ''}"
+                @click=${() => this.toggleFileSort('name')}
+              >
+                <span class="sort-indicator">${this.fileSortIndicator('name')}</span>
+                Name
+              </th>
+              <th
+                class="sortable ${this.fileSortField === 'size' ? 'sorted' : ''}"
+                @click=${() => this.toggleFileSort('size')}
+              >
+                <span class="sort-indicator">${this.fileSortIndicator('size')}</span>
+                Size
+              </th>
+              <th
+                class="sortable ${this.fileSortField === 'modified' ? 'sorted' : ''}"
+                @click=${() => this.toggleFileSort('modified')}
+              >
+                <span class="sort-indicator">${this.fileSortIndicator('modified')}</span>
+                Modified
+              </th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            ${tabData.files.slice(0, 1000).map(
+            ${this.getSortedFiles(tabData.files).slice(0, 1000).map(
               (file) => html`
                 <tr>
                   <td>
