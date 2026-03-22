@@ -91,6 +91,9 @@ export class ScionPageAdminScheduler extends LitElement {
   @state()
   private allSchedules: RecurringSchedule[] = [];
 
+  @state()
+  private groveMap: Map<string, { name: string; slug: string }> = new Map();
+
   static override styles = css`
     :host {
       display: block;
@@ -211,6 +214,16 @@ export class ScionPageAdminScheduler extends LitElement {
     .mono {
       font-family: var(--scion-font-mono, monospace);
       font-size: 0.8125rem;
+    }
+
+    .grove-link {
+      color: var(--scion-primary, #3b82f6);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .grove-link:hover {
+      text-decoration: underline;
     }
 
     .meta-text {
@@ -378,7 +391,10 @@ export class ScionPageAdminScheduler extends LitElement {
     this.error = null;
 
     try {
-      const response = await apiFetch('/api/v1/admin/scheduler');
+      const [response, grovesResponse] = await Promise.all([
+        apiFetch('/api/v1/admin/scheduler'),
+        apiFetch('/api/v1/groves'),
+      ]);
 
       if (!response.ok) {
         throw new Error(await extractApiError(response, `HTTP ${response.status}: ${response.statusText}`));
@@ -387,6 +403,16 @@ export class ScionPageAdminScheduler extends LitElement {
       const data = (await response.json()) as SchedulerResponse;
       this.data = data;
       this.allSchedules = data.recurringSchedules ?? [];
+
+      // Build grove ID -> name/slug lookup map
+      if (grovesResponse.ok) {
+        const grovesData = (await grovesResponse.json()) as { id: string; name: string; slug?: string }[];
+        const map = new Map<string, { name: string; slug: string }>();
+        for (const g of grovesData) {
+          map.set(g.id, { name: g.name, slug: g.slug ?? g.id });
+        }
+        this.groveMap = map;
+      }
     } catch (err) {
       console.error('Failed to load scheduler status:', err);
       this.error = err instanceof Error ? err.message : 'Failed to load scheduler status';
@@ -444,6 +470,15 @@ export class ScionPageAdminScheduler extends LitElement {
     } catch {
       return dateString;
     }
+  }
+
+  private renderGroveCell(groveId: string) {
+    const grove = this.groveMap.get(groveId);
+    if (grove) {
+      return html`<a class="grove-link" href="/groves/${encodeURIComponent(grove.slug)}">${grove.name}</a>`;
+    }
+    // Fallback to truncated ID if grove not found
+    return html`<span class="mono">${groveId.length > 12 ? groveId.slice(0, 12) + '...' : groveId}</span>`;
   }
 
   private formatInterval(minutes: number): string {
@@ -693,11 +728,7 @@ export class ScionPageAdminScheduler extends LitElement {
                             </span>
                           </td>
                           <td class="hide-mobile">
-                            <span class="mono">
-                              ${sched.groveId.length > 12
-                                ? sched.groveId.slice(0, 12) + '...'
-                                : sched.groveId}
-                            </span>
+                            ${this.renderGroveCell(sched.groveId)}
                           </td>
                           <td class="hide-mobile">
                             <span class="meta-text">
@@ -742,9 +773,7 @@ export class ScionPageAdminScheduler extends LitElement {
         <td><span class="status-badge ${evt.status}">${evt.status}</span></td>
         <td><span class="meta-text">${fireTimeDisplay}</span></td>
         <td class="hide-mobile">
-          <span class="mono"
-            >${evt.groveId.length > 12 ? evt.groveId.slice(0, 12) + '...' : evt.groveId}</span
-          >
+          ${this.renderGroveCell(evt.groveId)}
         </td>
         <td class="hide-mobile">
           <span class="meta-text">${this.formatRelativeTime(evt.createdAt)}</span>
