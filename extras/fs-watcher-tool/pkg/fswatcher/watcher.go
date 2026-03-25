@@ -115,7 +115,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 
 	if w.cfg.Debug {
 		log.Printf("[watcher] fanotify fd=%d, flags=FAN_CLASS_NOTIF|FAN_REPORT_DFID_NAME|FAN_CLOEXEC", fd)
-		log.Printf("[watcher] mark flags=FAN_MARK_ADD|FAN_MARK_FILESYSTEM, mask=CREATE|DELETE|CLOSE_WRITE|MOVED_FROM|MOVED_TO")
+		log.Printf("[watcher] mark flags=FAN_MARK_ADD|FAN_MARK_FILESYSTEM, mask=ACCESS|CREATE|DELETE|CLOSE_WRITE|MOVED_FROM|MOVED_TO")
 		log.Printf("[watcher] watching %d directories, debounce=%s", len(w.roots), w.cfg.Debounce)
 		log.Printf("[watcher] entering event loop (poll timeout=500ms)")
 	}
@@ -127,7 +127,7 @@ func (w *Watcher) markDirectory(dir string) error {
 	// FAN_MARK_ADD | FAN_MARK_FILESYSTEM marks the entire filesystem containing dir.
 	// This captures events from all containers writing to bind-mounted paths on this FS.
 	markFlags := uint(unix.FAN_MARK_ADD | unix.FAN_MARK_FILESYSTEM)
-	mask := uint64(unix.FAN_CREATE | unix.FAN_DELETE | unix.FAN_CLOSE_WRITE |
+	mask := uint64(unix.FAN_ACCESS | unix.FAN_CREATE | unix.FAN_DELETE | unix.FAN_CLOSE_WRITE |
 		unix.FAN_MOVED_FROM | unix.FAN_MOVED_TO)
 	if w.cfg.Debug {
 		log.Printf("[watcher] marking filesystem for dir: %s", dir)
@@ -315,6 +315,8 @@ func (w *Watcher) handleRawEvent(pid int, mask uint64, absPath string) {
 		w.handleRenameFrom(agentID, absPath, relPath)
 	case mask&unix.FAN_MOVED_TO != 0:
 		w.handleRenameTo(agentID, absPath, relPath)
+	case mask&unix.FAN_ACCESS != 0:
+		w.submitDebounced(agentID, absPath, relPath, ActionRead)
 	}
 }
 

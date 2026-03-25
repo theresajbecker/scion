@@ -6,6 +6,7 @@ import "time"
 type Action string
 
 const (
+	ActionRead       Action = "read"
 	ActionCreate     Action = "create"
 	ActionModify     Action = "modify"
 	ActionDelete     Action = "delete"
