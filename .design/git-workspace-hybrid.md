@@ -527,12 +527,26 @@ The branch name field on the new-agent form adapts its default based on workspac
 5. ✅ Test concurrent agent access to shared workspace.
    - ✅ Documented as user responsibility (same as hub-native groves).
 
-### Phase 4: Web UI
+### Phase 4: Web UI ✅ Completed
 
-1. Add git workspace mode sub-selector to grove creation form.
-2. Enable workspace file browser for shared-workspace groves.
-3. Add "Pull Latest" action to grove detail page.
-4. Adapt agent creation form branch default based on workspace mode.
+1. ✅ Add git workspace mode sub-selector to grove creation form.
+   - ✅ Radio button group (per-agent clone / shared workspace) shown when Git Repository is selected.
+   - ✅ Mode-specific hints and informational note for shared workspace mode.
+   - ✅ `workspaceMode` and `scion.dev/workspace-mode` label sent in API request.
+2. ✅ Enable workspace file browser for shared-workspace groves.
+   - ✅ `shouldShowFilesSection()` and `getFileTabs()` updated to include workspace tab for shared-workspace groves.
+   - ✅ File loading on page load triggers for shared-workspace groves (same as hub-native).
+3. ✅ Add "Pull Latest" action to grove detail page.
+   - ✅ Backend `POST /api/v1/groves/{id}/workspace/pull` endpoint with `git pull --ff-only`.
+   - ✅ `PullSharedWorkspace` utility function in `pkg/util/git.go` with token auth and credential sanitization.
+   - ✅ "Pull Latest" button in grove header actions (visible for shared-workspace groves with update capability).
+   - ✅ Pull result displayed via `sl-alert` (success/error) with dismiss support.
+   - ✅ File list auto-refreshes after successful pull.
+4. ✅ Adapt agent creation form branch default based on workspace mode.
+   - ✅ Shared-workspace groves: placeholder shows grove's default branch (e.g., "main").
+   - ✅ Per-agent clone groves: placeholder shows "defaults to agent name" (existing behavior).
+   - ✅ Hint text adapts to explain shared branch semantics.
+5. ✅ Add `isSharedWorkspace()` helper to shared TypeScript types.
 
 ### Phase 5: Credential Standardization & Polish
 
