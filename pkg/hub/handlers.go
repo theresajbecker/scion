@@ -3365,6 +3365,12 @@ func (s *Server) handleGroveRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for nested /workspace/pull path (git pull for shared-workspace groves)
+	if subPath == "workspace/pull" {
+		s.handleGroveWorkspacePull(w, r, groveID)
+		return
+	}
+
 	// Check for nested /workspace/archive path (download workspace as zip)
 	if subPath == "workspace/archive" {
 		s.handleGroveWorkspaceArchive(w, r, groveID)

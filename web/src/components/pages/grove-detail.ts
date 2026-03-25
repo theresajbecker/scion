@@ -24,7 +24,7 @@ import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import type { PageData, Grove, Agent, Capabilities } from '../../shared/types.js';
-import { can, canAny, getAgentDisplayStatus, isAgentRunning, isTerminalAvailable } from '../../shared/types.js';
+import { can, canAny, getAgentDisplayStatus, isAgentRunning, isTerminalAvailable, isSharedWorkspace } from '../../shared/types.js';
 import type { StatusType } from '../shared/status-badge.js';
 import { apiFetch, extractApiError } from '../../client/api.js';
 import { stateManager } from '../../client/state.js';
@@ -130,6 +130,18 @@ export class ScionPageGroveDetail extends LitElement {
    */
   @state()
   private viewMode: ViewMode = 'grid';
+
+  /**
+   * Whether a git pull is in progress
+   */
+  @state()
+  private pullLoading = false;
+
+  /**
+   * Result of the last git pull operation
+   */
+  @state()
+  private pullResult: { status: string; output?: string; error?: string } | null = null;
 
   /**
    * Whether the messages section is expanded (lazy-load trigger)
@@ -833,11 +845,11 @@ export class ScionPageGroveDetail extends LitElement {
       }
 
       // Load files for the active tab
-      if (this.grove && !this.grove.gitRemote) {
+      if (this.grove && (!this.grove.gitRemote || isSharedWorkspace(this.grove))) {
         void this.loadTabFiles('workspace');
       }
-      // For git-based groves with shared dirs, load the first shared dir
-      if (this.grove && this.grove.gitRemote && this.grove.sharedDirs?.length) {
+      // For git-based groves (non-shared) with shared dirs, load the first shared dir
+      if (this.grove && this.grove.gitRemote && !isSharedWorkspace(this.grove) && this.grove.sharedDirs?.length) {
         this.activeFileTab = this.grove.sharedDirs[0].name;
         void this.loadTabFiles(this.grove.sharedDirs[0].name);
       }
@@ -1261,6 +1273,32 @@ export class ScionPageGroveDetail extends LitElement {
     }
   }
 
+  private async handlePullLatest(): Promise<void> {
+    this.pullLoading = true;
+    this.pullResult = null;
+
+    try {
+      const response = await apiFetch(`/api/v1/groves/${this.groveId}/workspace/pull`, {
+        method: 'POST',
+      });
+
+      const result = (await response.json()) as { status?: string; output?: string; error?: string; detail?: string };
+
+      if (!response.ok) {
+        this.pullResult = { status: 'error', error: result.detail || result.error || 'Pull failed' };
+        return;
+      }
+
+      this.pullResult = { status: 'ok', output: result.output };
+      // Refresh file list after pull
+      void this.loadTabFiles(this.activeFileTab);
+    } catch (err) {
+      this.pullResult = { status: 'error', error: err instanceof Error ? err.message : 'Pull failed' };
+    } finally {
+      this.pullLoading = false;
+    }
+  }
+
   override render() {
     if (this.loading) {
       return this.renderLoading();
@@ -1306,6 +1344,19 @@ export class ScionPageGroveDetail extends LitElement {
                 </a>
               `
             : nothing}
+          ${this.grove && isSharedWorkspace(this.grove) && can(this.grove?._capabilities, 'update')
+            ? html`
+                <sl-button
+                  size="small"
+                  ?loading=${this.pullLoading}
+                  ?disabled=${this.pullLoading}
+                  @click=${() => this.handlePullLatest()}
+                >
+                  <sl-icon slot="prefix" name="arrow-down-circle"></sl-icon>
+                  Pull Latest
+                </sl-button>
+              `
+            : nothing}
           ${canAny(this.grove?._capabilities, 'update', 'delete', 'manage')
             ? html`
                 <a href="/groves/${this.groveId}/settings" style="text-decoration: none;">
@@ -1343,6 +1394,22 @@ export class ScionPageGroveDetail extends LitElement {
           </span>
         </div>
       </div>
+
+      ${this.pullResult
+        ? html`
+            <sl-alert
+              variant=${this.pullResult.status === 'ok' ? 'success' : 'danger'}
+              open
+              closable
+              @sl-after-hide=${() => { this.pullResult = null; }}
+            >
+              <sl-icon slot="icon" name=${this.pullResult.status === 'ok' ? 'check-circle' : 'exclamation-triangle'}></sl-icon>
+              ${this.pullResult.status === 'ok'
+                ? (this.pullResult.output || 'Pull completed successfully.')
+                : (this.pullResult.error || 'Pull failed.')}
+            </sl-alert>
+          `
+        : nothing}
 
       <div class="section-header">
         <h2>Agents</h2>
@@ -1422,16 +1489,16 @@ export class ScionPageGroveDetail extends LitElement {
 
   private shouldShowFilesSection(): boolean {
     if (!this.grove) return false;
-    // Hub-native groves always show files (workspace tab)
-    if (!this.grove.gitRemote) return true;
-    // Git-based groves show only when shared dirs exist
+    // Hub-native groves and shared-workspace git groves always show files
+    if (!this.grove.gitRemote || isSharedWorkspace(this.grove)) return true;
+    // Per-agent git groves show only when shared dirs exist
     return (this.grove.sharedDirs?.length ?? 0) > 0;
   }
 
   private getFileTabs(): Array<{ key: string; label: string }> {
     const tabs: Array<{ key: string; label: string }> = [];
-    // Hub-native groves get a workspace tab
-    if (this.grove && !this.grove.gitRemote) {
+    // Hub-native groves and shared-workspace git groves get a workspace tab
+    if (this.grove && (!this.grove.gitRemote || isSharedWorkspace(this.grove))) {
       tabs.push({ key: 'workspace', label: 'workspace' });
     }
     // Add one tab per shared dir

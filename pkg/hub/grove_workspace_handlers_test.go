@@ -934,6 +934,37 @@ func TestGroveWorkspaceArchive_SharedWorkspaceAllowed(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code, "shared-workspace grove should allow workspace archive")
 }
 
+func TestGroveWorkspacePull_RequiresSharedWorkspace(t *testing.T) {
+	srv, _ := testServer(t)
+
+	// Create a regular hub-native grove (not shared-workspace)
+	grove, _ := createTestHubNativeGrove(t, srv, "Pull NonShared")
+
+	rec := doRequest(t, srv, http.MethodPost, fmt.Sprintf("/api/v1/groves/%s/workspace/pull", grove.ID), nil)
+	assert.Equal(t, http.StatusConflict, rec.Code, "pull should be rejected for non-shared-workspace groves")
+}
+
+func TestGroveWorkspacePull_MethodNotAllowed(t *testing.T) {
+	srv, _ := testServer(t)
+
+	// Create shared-workspace grove directly in the store to avoid clone attempt
+	grove := store.Grove{
+		ID:        "pull-method-test-id",
+		Name:      "Pull Method Test",
+		Slug:      "pull-method-test",
+		GitRemote: "github.com/test/pull-method",
+		Labels: map[string]string{
+			"scion.dev/workspace-mode": "shared",
+		},
+	}
+	ctx := context.Background()
+	err := srv.store.CreateGrove(ctx, &grove)
+	require.NoError(t, err)
+
+	rec := doRequest(t, srv, http.MethodGet, fmt.Sprintf("/api/v1/groves/%s/workspace/pull", grove.ID), nil)
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code, "GET should not be allowed for pull")
+}
+
 // Ensure the store's ErrNotFound is wired correctly for grove lookups.
 
 func init() {

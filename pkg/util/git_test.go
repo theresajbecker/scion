@@ -590,6 +590,87 @@ func TestCloneSharedWorkspace(t *testing.T) {
 	})
 }
 
+func TestPullSharedWorkspace(t *testing.T) {
+	// Create a source repo to pull from
+	sourceDir := setupGitRepo(t)
+
+	// Add initial content
+	if err := os.WriteFile(filepath.Join(sourceDir, "initial.txt"), []byte("initial"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "add", "initial.txt")
+	cmd.Dir = sourceDir
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "initial commit")
+	cmd.Dir = sourceDir
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Clone from the source
+	cloneDir := filepath.Join(t.TempDir(), "workspace")
+	if err := CloneSharedWorkspace(cloneDir, sourceDir, "", ""); err != nil {
+		t.Fatalf("Clone failed: %v", err)
+	}
+
+	t.Run("PullNoChanges", func(t *testing.T) {
+		output, err := PullSharedWorkspace(cloneDir, "")
+		if err != nil {
+			t.Fatalf("Pull failed: %v", err)
+		}
+		if !strings.Contains(output, "Already up to date") {
+			t.Logf("Unexpected output (not an error): %q", output)
+		}
+	})
+
+	t.Run("PullNewChanges", func(t *testing.T) {
+		// Add a new file to the source repo
+		if err := os.WriteFile(filepath.Join(sourceDir, "new.txt"), []byte("new content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("git", "add", "new.txt")
+		cmd.Dir = sourceDir
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+		cmd = exec.Command("git", "commit", "-m", "add new file")
+		cmd.Dir = sourceDir
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+
+		output, err := PullSharedWorkspace(cloneDir, "")
+		if err != nil {
+			t.Fatalf("Pull failed: %v", err)
+		}
+		if output == "" {
+			t.Error("expected non-empty output")
+		}
+
+		// Verify the new file was pulled
+		content, err := os.ReadFile(filepath.Join(cloneDir, "new.txt"))
+		if err != nil {
+			t.Fatal("new.txt should exist after pull")
+		}
+		if string(content) != "new content" {
+			t.Errorf("unexpected content: %q", content)
+		}
+	})
+
+	t.Run("PullFailure_NotARepo", func(t *testing.T) {
+		notARepo := t.TempDir()
+		_, err := PullSharedWorkspace(notARepo, "")
+		if err == nil {
+			t.Fatal("expected pull to fail for non-repo directory")
+		}
+		if !strings.Contains(err.Error(), "git pull failed") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestSanitizeGitOutput(t *testing.T) {
 	tests := []struct {
 		name   string

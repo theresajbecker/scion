@@ -30,6 +30,7 @@ import type {
   Template,
   GCPServiceAccount,
 } from '../../shared/types.js';
+import { isSharedWorkspace } from '../../shared/types.js';
 import { apiFetch, parseApiError } from '../../client/api.js';
 import '../shared/status-badge.js';
 
@@ -934,13 +935,19 @@ export class ScionPageAgentCreate extends LitElement {
                   <label for="branch">Branch</label>
                   <sl-input
                     id="branch"
-                    placeholder="defaults to agent name"
+                    placeholder=${this.selectedGrove && isSharedWorkspace(this.selectedGrove)
+                      ? (this.selectedGrove.labels?.['scion.dev/default-branch'] || 'main')
+                      : 'defaults to agent name'}
                     .value=${this.branch}
                     @sl-input=${(e: Event) => {
                       this.branch = (e.target as HTMLElement & { value: string }).value;
                     }}
                   ></sl-input>
-                  <div class="hint">Git branch for this agent's workspace.</div>
+                  <div class="hint">
+                    ${this.selectedGrove && isSharedWorkspace(this.selectedGrove)
+                      ? 'Branch checked out in the shared workspace. All agents share this branch.'
+                      : 'Git branch for this agent\'s workspace.'}
+                  </div>
                 </div>
               `
             : ''}

@@ -167,6 +167,13 @@ export interface Grove {
 }
 
 /**
+ * Check whether a grove is a shared-workspace git grove.
+ */
+export function isSharedWorkspace(grove: Grove): boolean {
+  return !!grove.gitRemote && grove.labels?.['scion.dev/workspace-mode'] === 'shared';
+}
+
+/**
  * Agent lifecycle phase (from canonical agent state model)
  */
 export type AgentPhase =

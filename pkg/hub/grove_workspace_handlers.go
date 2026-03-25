@@ -30,6 +30,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/scion/pkg/config"
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
+	"github.com/GoogleCloudPlatform/scion/pkg/util"
 )
 
 // maxUploadTotalSize is the maximum total request body size for file uploads (100MB).
@@ -666,6 +667,51 @@ func validateWorkspaceFilePath(path string) error {
 	}
 
 	return nil
+}
+
+// handleGroveWorkspacePull performs a `git pull --ff-only` on a shared-workspace grove.
+func (s *Server) handleGroveWorkspacePull(w http.ResponseWriter, r *http.Request, groveID string) {
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w)
+		return
+	}
+
+	ctx := r.Context()
+
+	grove, err := s.store.GetGrove(ctx, groveID)
+	if err != nil {
+		writeErrorFromErr(w, err, "")
+		return
+	}
+
+	if !grove.IsSharedWorkspace() {
+		Conflict(w, "Pull is only available for shared-workspace git groves")
+		return
+	}
+
+	workspacePath, err := hubNativeGrovePath(grove.Slug)
+	if err != nil {
+		InternalError(w)
+		return
+	}
+
+	token := s.resolveCloneToken(ctx, grove)
+
+	output, err := util.PullSharedWorkspace(workspacePath, token)
+	if err != nil {
+		slog.Warn("shared workspace pull failed",
+			"grove_id", grove.ID, "error", err.Error())
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error":  "pull failed",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "ok",
+		"output": output,
+	})
 }
 
 // cleanEmptyDirs removes empty directories from targetDir up to (but not including) rootDir.

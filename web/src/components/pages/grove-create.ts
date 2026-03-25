@@ -27,6 +27,7 @@ import { extractApiError } from '../../client/api.js';
 import '../shared/status-badge.js';
 
 type GroveMode = 'git' | 'hub';
+type GitWorkspaceMode = 'per-agent' | 'shared';
 
 @customElement('scion-page-grove-create')
 export class ScionPageGroveCreate extends LitElement {
@@ -60,6 +61,9 @@ export class ScionPageGroveCreate extends LitElement {
 
   @state()
   private mode: GroveMode = 'hub';
+
+  @state()
+  private gitWorkspaceMode: GitWorkspaceMode = 'per-agent';
 
   override updated(changedProperties: Map<string, unknown>): void {
     super.updated(changedProperties);
@@ -139,8 +143,18 @@ export class ScionPageGroveCreate extends LitElement {
     }
 
     .form-field sl-input,
-    .form-field sl-select {
+    .form-field sl-select,
+    .form-field sl-radio-group {
       width: 100%;
+    }
+
+    .workspace-mode-note {
+      font-size: 0.75rem;
+      color: var(--scion-text-muted, #64748b);
+      margin-top: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--scion-bg-subtle, #f1f5f9);
+      border-radius: var(--scion-radius, 0.5rem);
     }
 
     .form-actions {
@@ -271,11 +285,16 @@ export class ScionPageGroveCreate extends LitElement {
           .replace(/\.git$/, '');
         cloneUrl = `https://${cloneUrl}.git`;
         body.gitRemote = trimmedUrl;
-        body.labels = {
+        const labels: Record<string, string> = {
           'scion.dev/default-branch': this.branch.trim() || 'main',
           'scion.dev/clone-url': cloneUrl,
           'scion.dev/source-url': trimmedUrl,
         };
+        if (this.gitWorkspaceMode === 'shared') {
+          labels['scion.dev/workspace-mode'] = 'shared';
+          body.workspaceMode = 'shared';
+        }
+        body.labels = labels;
       }
 
       const response = await fetch('/api/v1/groves', {
@@ -369,6 +388,30 @@ export class ScionPageGroveCreate extends LitElement {
                   <div class="hint">
                     HTTPS or SSH URL of the git repository.
                   </div>
+                </div>
+
+                <div class="form-field">
+                  <label>Workspace Mode</label>
+                  <sl-radio-group
+                    .value=${this.gitWorkspaceMode}
+                    @sl-change=${(e: Event) => {
+                      this.gitWorkspaceMode = (e.target as HTMLElement & { value: string }).value as GitWorkspaceMode;
+                    }}
+                  >
+                    <sl-radio-button value="per-agent">Per-agent clone</sl-radio-button>
+                    <sl-radio-button value="shared">Shared workspace</sl-radio-button>
+                  </sl-radio-group>
+                  <div class="hint">
+                    ${this.gitWorkspaceMode === 'per-agent'
+                      ? 'Each agent gets its own independent clone of the repository.'
+                      : 'A single git clone is shared by all agents in this grove.'}
+                  </div>
+                  ${this.gitWorkspaceMode === 'shared'
+                    ? html`<div class="workspace-mode-note">
+                        A single git clone will be created on the hub and shared by all agents.
+                        Agents can commit, push, and pull but must coordinate branch changes.
+                      </div>`
+                    : nothing}
                 </div>
               `
             : nothing}

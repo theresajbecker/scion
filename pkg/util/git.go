@@ -575,6 +575,33 @@ func CloneSharedWorkspace(workspacePath, cloneURL, branch, token string) error {
 	return nil
 }
 
+// PullSharedWorkspace runs `git pull` in the specified workspace path to update
+// it from the remote. It optionally uses a token for authentication and sanitizes
+// credentials from error output.
+func PullSharedWorkspace(workspacePath, token string) (string, error) {
+	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+
+	// If a token is provided, configure a temporary credential helper via env
+	if token != "" {
+		// Use a one-shot credential helper that provides the token
+		helper := fmt.Sprintf("!f() { echo username=oauth2; echo password=%s; }; f", token)
+		env = append(env,
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=credential.helper",
+			"GIT_CONFIG_VALUE_0="+helper,
+		)
+	}
+
+	cmd := exec.Command("git", "-C", workspacePath, "pull", "--ff-only")
+	cmd.Env = env
+	output, err := cmd.CombinedOutput()
+	sanitized := sanitizeGitOutput(strings.TrimSpace(string(output)), token)
+	if err != nil {
+		return "", fmt.Errorf("git pull failed: %s", sanitized)
+	}
+	return sanitized, nil
+}
+
 // gitConfig sets a git config value in the specified repository.
 func gitConfig(repoPath, key, value string) error {
 	cmd := exec.Command("git", "-C", repoPath, "config", key, value)
