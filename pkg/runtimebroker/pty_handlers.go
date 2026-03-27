@@ -316,7 +316,7 @@ func (s *LocalPTYSession) runK8sExec() error {
 	// (sciontool init drops privileges), so root can't see the session.
 	req.VersionedParams(&corev1.PodExecOptions{
 		Container: "agent",
-		Command:   []string{"su", "-", "scion", "-c", "tmux attach-session -t scion"},
+		Command:   []string{"su", "-", "scion", "-c", "TERM=xterm-256color tmux attach-session -t scion"},
 		Stdin:     true,
 		Stdout:    true,
 		Stderr:    true,
@@ -438,6 +438,7 @@ func (s *LocalPTYSession) startDockerExec() error {
 
 	args := []string{
 		"exec", "-it",
+		"-e", "TERM=xterm-256color",
 		"--user", s.execUser,
 		s.containerID,
 		"tmux", "attach-session", "-t", "scion",
@@ -664,7 +665,7 @@ func (h *StreamPTYHandler) runK8sExec() error {
 	// (sciontool init drops privileges), so root can't see the session.
 	req.VersionedParams(&corev1.PodExecOptions{
 		Container: "agent",
-		Command:   []string{"su", "-", "scion", "-c", "tmux attach-session -t scion"},
+		Command:   []string{"su", "-", "scion", "-c", "TERM=xterm-256color tmux attach-session -t scion"},
 		Stdin:     true,
 		Stdout:    true,
 		Stderr:    true,
