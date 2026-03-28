@@ -292,7 +292,7 @@ GetInstallationForRepository(ctx context.Context, repoFullName string) (*GitHubI
 
 ---
 
-## 6. Open Questions
+## 6. Design Decisions (Resolved)
 
 ### Q1: Should `GetGroveByGitRemote` return the "primary" grove?
 
@@ -346,21 +346,13 @@ GitHub App installations are fundamentally tied to a repository (or organization
 
 ### Q6: How should `handleGroveSyncTemplates` find GitHub tokens without `GetGroveByGitRemote`?
 
-Currently, `handleGroveSyncTemplates()` looks up a grove by git remote to find one with a `GitHubInstallationID` for token-based cloning of external template repos. With `GetGroveByGitRemote` being deprecated, this needs a new approach.
+**Resolved:** Query `github_installations` directly by repository name. Add a store method `GetInstallationForRepository(ctx, repoFullName)` that searches the `repositories` JSON array in `github_installations`. This removes the indirection through groves entirely.
 
-**Options:**
-
-1. **Query `github_installations` directly by repository name.** Add a store method like `GetInstallationForRepository(ctx, repoFullName)` that searches the `repositories` JSON array in `github_installations`. This removes the indirection through groves entirely.
-2. **Use `GetGrovesByGitRemote` (plural) and pick the first with a valid installation.** Simpler migration but still couples installation lookup to groves.
-3. **Use the grove's own installation if available, fall back to option 1.** The calling grove may already have an installation for a different repo under the same org.
-
-**Proposed answer:** Option 1 — query installations directly. The intent of the lookup is "find a GitHub token that can access this repo," not "find a grove." The `github_installations.repositories` column already contains the needed data. This also simplifies the code and removes a non-obvious coupling between template syncing and grove lookup.
+The intent of the lookup is "find a GitHub token that can access this repo," not "find a grove." The `github_installations.repositories` column already contains the needed data. This also simplifies the code and removes a non-obvious coupling between template syncing and grove lookup.
 
 ### Q7: Should the `@branch` qualifier interact with multi-grove?
 
-The existing `@branch` qualifier (e.g., `github.com/acme/widgets@release/v2`) produces a different normalized remote, which means it already creates a "separate" grove namespace. With the new multi-grove support, a user could create multiple groves for the same URL-plus-branch combination. Should the two mechanisms be kept independent, or should `@branch` be subsumed into multi-grove?
-
-**Proposed answer:** Keep them independent. The `@branch` qualifier serves a distinct semantic purpose (branch-locked groves) and is orthogonal to team-based isolation. A grove with `@release/v2` has a different normalized remote and thus doesn't conflict with unqualified groves. Users can create multiple groves for `github.com/acme/widgets@release/v2` if needed, using the same serial slug mechanism.
+**Resolved:** Keep them independent. The `@branch` qualifier serves a distinct semantic purpose (branch-locked groves) and is orthogonal to team-based isolation. The fully qualified git remote (including any `@branch` suffix) is unrelated to grove identity and uniqueness — it simply produces a different normalized remote URL. A grove with `@release/v2` has a different normalized remote and thus doesn't conflict with unqualified groves. Users can create multiple groves for `github.com/acme/widgets@release/v2` if needed, using the same serial slug mechanism.
 
 ---
 
